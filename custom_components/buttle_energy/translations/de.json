@@ -1,0 +1,111 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "buttle.de verbinden",
+        "description": "Lege auf buttle.de unter Mein Bereich → Energie-API einen API-Schlüssel an und erteile die Einwilligung zur Übertragung. Der Schlüssel wird nur einmal angezeigt.",
+        "data": {
+          "url": "Server",
+          "api_key": "API-Schlüssel"
+        },
+        "data_description": {
+          "url": "In der Regel {default_url}",
+          "api_key": "Format bte_…"
+        }
+      },
+      "entities": {
+        "title": "Entitäten auswählen",
+        "description": "Vorschlag aus deinem Energie-Dashboard:\n{suggestion}\n\nNicht vorgeschlagen:\n{skipped}\n\nDu kannst Energie- (Wh/kWh/MWh) und Leistungssensoren (W/kW) ergänzen oder entfernen. {invalid}",
+        "data": {
+          "entities": "Zu übertragende Entitäten"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Neuer API-Schlüssel",
+        "description": "buttle.de ({url}) hat den gespeicherten API-Schlüssel abgelehnt. Erstelle einen neuen Schlüssel und trage ihn hier ein.",
+        "data": {
+          "api_key": "API-Schlüssel"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "API-Schlüssel abgelehnt.",
+      "invalid_key_format": "Kein buttle.de-API-Schlüssel (bte_…).",
+      "consent_required": "Auf buttle.de fehlt die Einwilligung zur Übertragung oder der Schlüssel hat keine Schreibberechtigung.",
+      "rate_limited": "Zu viele Anfragen. Bitte in einer Minute erneut versuchen.",
+      "cannot_connect": "Keine Verbindung zum Server.",
+      "https_required": "HTTPS ist erforderlich.",
+      "invalid_url": "Ungültige Adresse (Serveradresse ohne Pfad).",
+      "unknown": "Unerwarteter Fehler.",
+      "no_entities": "Bitte mindestens eine Entität auswählen.",
+      "incompatible": "Nicht unterstützt (Einheit, Geräte- oder Zustandsklasse): {invalid}",
+      "api_incompatible": "Die Serverversion passt nicht zu dieser Version der Integration.",
+      "update_required": "Bitte die Integration (HACS) aktualisieren, um diesen Server zu verbinden."
+    },
+    "abort": {
+      "already_configured": "Dieser Server ist bereits eingerichtet.",
+      "reauth_successful": "API-Schlüssel aktualisiert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Übertragene Entitäten",
+        "description": "Vorschlag aus deinem Energie-Dashboard:\n{suggestion}\n\nNicht vorgeschlagen:\n{skipped}\n\n{invalid}",
+        "data": {
+          "entities": "Zu übertragende Entitäten",
+          "use_dashboard_suggestion": "Auf Dashboard-Vorschlag zurücksetzen"
+        },
+        "data_description": {
+          "use_dashboard_suggestion": "Ersetzt die Auswahl durch den aktuellen Vorschlag; danach prüfen und erneut absenden."
+        }
+      }
+    },
+    "error": {
+      "no_entities": "Bitte mindestens eine Entität auswählen.",
+      "incompatible": "Nicht unterstützt (Einheit, Geräte- oder Zustandsklasse): {invalid}"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "upload_status": {
+        "name": "Übertragungsstatus",
+        "state": {
+          "pending": "Ausstehend",
+          "ok": "OK",
+          "offline": "Offline",
+          "rate_limited": "Drosselung aktiv",
+          "auth_failed": "Anmeldung fehlgeschlagen",
+          "consent_required": "Einwilligung erforderlich",
+          "rejected": "Abgelehnt",
+          "update_required": "Update erforderlich",
+          "api_incompatible": "Server inkompatibel"
+        }
+      },
+      "pending_readings": {
+        "name": "Ausstehende Messwerte"
+      },
+      "last_upload": {
+        "name": "Letzte Übertragung"
+      }
+    }
+  },
+  "issues": {
+    "consent_required": {
+      "title": "buttle.de: Einwilligung erforderlich",
+      "description": "buttle.de speichert keine Messwerte. Erteile unter {url} (Mein Bereich → Energie-API) die Einwilligung zur Übertragung und prüfe die Berechtigungen des Schlüssels. Messwerte werden bis dahin lokal gepuffert; lade die Integration danach neu."
+    },
+    "update_required": {
+      "title": "Buttle Energie: Update erforderlich",
+      "description": "Der Server nimmt Version {installed} der Integration nicht mehr an. Messwerte bleiben lokal gespeichert. Aktualisiere die Integration in HACS und starte Home Assistant neu."
+    },
+    "api_incompatible": {
+      "title": "Buttle Energie: Server inkompatibel",
+      "description": "Version {installed} der Integration unterstützt die Serverversion ({server}) nicht. Messwerte bleiben lokal gespeichert. Prüfe in HACS, ob ein Update verfügbar ist."
+    },
+    "update_available": {
+      "title": "Buttle Energie: Update verfügbar",
+      "description": "Version {latest} der Integration ist verfügbar (installiert: {installed}). Aktualisiere sie in HACS."
+    }
+  }
+}

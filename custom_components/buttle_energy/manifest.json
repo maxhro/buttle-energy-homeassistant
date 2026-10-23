@@ -1,0 +1,18 @@
+{
+  "domain": "buttle_energy",
+  "name": "Buttle Energie",
+  "after_dependencies": [
+    "energy"
+  ],
+  "codeowners": [
+    "@maxhro"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/maxhro/buttle-energy-homeassistant",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/maxhro/buttle-energy-homeassistant/issues",
+  "requirements": [],
+  "version": "0.2.0"
+}
