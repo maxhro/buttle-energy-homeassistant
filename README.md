@@ -29,6 +29,10 @@ gebildet – andere Nutzer sehen nie deine Einzelwerte.
 
 ## Installation über HACS
 
+[![In HACS öffnen](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=maxhro&repository=buttle-energy-homeassistant&category=integration)
+
+Der Button öffnet das Repository direkt in deinem HACS. Alternativ von Hand:
+
 1. HACS öffnen → Menü (⋮) → **Benutzerdefinierte Repositories**
 2. Repository `https://github.com/maxhro/buttle-energy-homeassistant`,
    Typ **Integration** → Hinzufügen
@@ -36,6 +40,7 @@ gebildet – andere Nutzer sehen nie deine Einzelwerte.
 4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Buttle Energie**
 
 Voraussetzung: Home Assistant 2024.11 oder neuer und ein Konto auf buttle.de.
+Das Integrations-Icon zeigt Home Assistant ab Version 2026.3 an.
 
 ## Einrichtung
 

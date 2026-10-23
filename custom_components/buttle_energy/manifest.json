@@ -4,6 +4,9 @@
   "after_dependencies": [
     "energy"
   ],
+  "categories": [
+    "energy"
+  ],
   "codeowners": [
     "@maxhro"
   ],
