@@ -30,6 +30,10 @@
         "data": {
           "api_key": "API-Schlüssel"
         }
+      },
+      "smoothing": {
+        "title": "Glättung je Entität",
+        "description": "Lege je Entität fest, wie Werte vor dem Senden geglättet werden – ähnlich dem Filter-Helfer von Home Assistant. „Mittelwert“ sendet den zeitgewichteten Durchschnitt je Zeitfenster, „Höchstens ein Wert“ sendet den ersten Wert je Fenster und verwirft die übrigen. Längere Fenster übertragen weniger Werte. Standard: Mittelwert über 1 Minute."
       }
     },
     "error": {
@@ -65,6 +69,10 @@
           "upload_interval": "Wie oft neue Messwerte an buttle.de übertragen werden.",
           "use_dashboard_suggestion": "Ersetzt die Auswahl durch den aktuellen Vorschlag; danach prüfen und erneut absenden."
         }
+      },
+      "smoothing": {
+        "title": "Glättung je Entität",
+        "description": "Lege je Entität fest, wie Werte vor dem Senden geglättet werden – ähnlich dem Filter-Helfer von Home Assistant. „Mittelwert“ sendet den zeitgewichteten Durchschnitt je Zeitfenster, „Höchstens ein Wert“ sendet den ersten Wert je Fenster und verwirft die übrigen. Längere Fenster übertragen weniger Werte. Standard: Mittelwert über 1 Minute."
       }
     },
     "error": {
@@ -112,6 +120,25 @@
     "update_available": {
       "title": "Buttle Energie: Update verfügbar",
       "description": "Version {latest} der Integration ist verfügbar (installiert: {installed}). Aktualisiere sie in HACS."
+    }
+  },
+  "selector": {
+    "smoothing": {
+      "options": {
+        "mean_10s": "Mittelwert über 10 Sekunden",
+        "mean_30s": "Mittelwert über 30 Sekunden",
+        "mean_1min": "Mittelwert über 1 Minute",
+        "mean_5min": "Mittelwert über 5 Minuten",
+        "mean_15min": "Mittelwert über 15 Minuten",
+        "mean_1h": "Mittelwert über 1 Stunde",
+        "throttle_10s": "Höchstens ein Wert je 10 Sekunden",
+        "throttle_30s": "Höchstens ein Wert je 30 Sekunden",
+        "throttle_1min": "Höchstens ein Wert je 1 Minute",
+        "throttle_5min": "Höchstens ein Wert je 5 Minuten",
+        "throttle_15min": "Höchstens ein Wert je 15 Minuten",
+        "throttle_1h": "Höchstens ein Wert je 1 Stunde",
+        "none": "Keine Glättung (jede Änderung)"
+      }
     }
   }
 }

@@ -12,11 +12,12 @@ from homeassistant.const import CONF_API_KEY, CONF_URL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import issue_registry as ir
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.buttle_energy.const import (
     CONF_ENTITIES,
+    CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
     CONF_USE_SUGGESTION,
     DOMAIN,
@@ -77,11 +78,17 @@ async def test_config_flow_uses_dashboard_suggestion(hass: HomeAssistant, aiocli
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_ENTITIES: ["sensor.grid_import", "sensor.other_power"]}
         )
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "smoothing"
+        defaults = {str(k): k.default() for k in result["data_schema"].schema}
+        assert defaults == {"sensor.grid_import": "mean_1min", "sensor.other_power": "mean_1min"}
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"sensor.other_power": "throttle_5min"})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {CONF_URL: URL, CONF_API_KEY: API_KEY}
     assert result["options"] == {
         CONF_ENTITIES: ["sensor.grid_import", "sensor.other_power"],
         CONF_UPLOAD_INTERVAL: "5min",
+        CONF_SMOOTHING: {"sensor.grid_import": "mean_1min", "sensor.other_power": "throttle_5min"},
     }
 
 
@@ -97,6 +104,7 @@ async def test_config_flow_uses_dashboard_suggestion(hass: HomeAssistant, aiocli
         (426, {"error": {"code": "client_outdated"}}, {}, {"base": "update_required"}),
         (200, STATUS_BODY | {"client": {"minimum": "9.0.0", "latest": "9.0.0"}}, {}, {"base": "update_required"}),
         (200, STATUS_BODY | {"api_release": "1.0.0"}, {}, {"base": "api_incompatible"}),
+        (200, STATUS_BODY | {"api_release": "1.1.0"}, {}, {"base": "api_incompatible"}),
         (200, STATUS_BODY | {"api_version": 2, "api_release": "2.0.0"}, {}, {"base": "api_incompatible"}),
     ],
 )
@@ -118,14 +126,20 @@ def _entry(
     aioclient_mock: AiohttpClientMocker | None = None,
     status: dict | None = None,
     upload_interval: str = "5min",
+    smoothing: dict[str, str] | None = None,
 ) -> MockConfigEntry:
+    """Config entry; without ``smoothing`` every change is sent unchanged."""
     if aioclient_mock is not None:
         aioclient_mock.get(STATUS_URL, json=status or STATUS_BODY)
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=URL,
         data={CONF_URL: URL, CONF_API_KEY: API_KEY},
-        options={CONF_ENTITIES: entities, CONF_UPLOAD_INTERVAL: upload_interval},
+        options={
+            CONF_ENTITIES: entities,
+            CONF_UPLOAD_INTERVAL: upload_interval,
+            CONF_SMOOTHING: {entity: "none" for entity in entities} if smoothing is None else smoothing,
+        },
     )
     entry.add_to_hass(hass)
     return entry
@@ -140,7 +154,7 @@ def _posted(aioclient_mock: AiohttpClientMocker) -> list[list[dict[str, Any]]]:
     return [call[2]["readings"] for call in aioclient_mock.mock_calls if call[0].upper() == "POST"]
 
 
-async def test_uploader_sends_six_fields_and_sensors(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+async def test_uploader_sends_whitelisted_fields_and_sensors(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     hass.states.async_set("sensor.grid_import", "100.5", ENERGY | {"friendly_name": "Netzbezug"})
     aioclient_mock.post(READINGS_URL, json={"accepted": 1, "duplicates": 0}, headers={"X-RateLimit-Remaining": "59"})
     entry = _entry(hass, ["sensor.grid_import"], aioclient_mock)
@@ -150,7 +164,8 @@ async def test_uploader_sends_six_fields_and_sensors(hass: HomeAssistant, aiocli
     batches = _posted(aioclient_mock)
     assert len(batches) == 1
     assert batches[0][0]["value"] == 100.5
-    assert set(batches[0][0]) == {"entity_id", "timestamp", "value", "unit", "device_class", "state_class"}
+    assert set(batches[0][0]) == {"entity_id", "timestamp", "value", "unit", "device_class", "state_class", "smoothing"}
+    assert batches[0][0]["smoothing"] == "none"
 
     hass.states.async_set("sensor.grid_import", "unavailable", ENERGY)
     hass.states.async_set("sensor.grid_import", "101", ENERGY)
@@ -254,10 +269,13 @@ async def test_options_flow_reset_to_suggestion(hass: HomeAssistant, aioclient_m
         result = await hass.config_entries.options.async_configure(
             result["flow_id"], {CONF_ENTITIES: default, CONF_USE_SUGGESTION: False}
         )
+        assert result["step_id"] == "smoothing"
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {
         CONF_ENTITIES: ["sensor.grid_import", "sensor.grid_export"],
         CONF_UPLOAD_INTERVAL: "5min",
+        CONF_SMOOTHING: {"sensor.grid_import": "mean_1min", "sensor.grid_export": "mean_1min"},
     }
 
 
@@ -270,21 +288,36 @@ async def test_config_flow_custom_upload_interval(hass: HomeAssistant, aioclient
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_ENTITIES: ["sensor.grid_import"], CONF_UPLOAD_INTERVAL: "15min"}
         )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["options"] == {CONF_ENTITIES: ["sensor.grid_import"], CONF_UPLOAD_INTERVAL: "15min"}
+    assert result["options"] == {
+        CONF_ENTITIES: ["sensor.grid_import"],
+        CONF_UPLOAD_INTERVAL: "15min",
+        CONF_SMOOTHING: {"sensor.grid_import": "mean_1min"},
+    }
 
 
 async def test_options_flow_custom_upload_interval(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     await _dashboard(hass)
-    entry = _entry(hass, ["sensor.grid_import"], upload_interval="5min")
+    entry = _entry(hass, ["sensor.grid_import"], upload_interval="5min", smoothing={"sensor.grid_import": "throttle_5min"})
     with patch("custom_components.buttle_energy.async_setup_entry", return_value=True):
         await hass.config_entries.async_setup(entry.entry_id)
         result = await hass.config_entries.options.async_init(entry.entry_id)
         result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {CONF_ENTITIES: ["sensor.grid_import"], CONF_UPLOAD_INTERVAL: "1h"}
+            result["flow_id"], {CONF_ENTITIES: ["sensor.grid_import", "sensor.grid_export"], CONF_UPLOAD_INTERVAL: "1h"}
+        )
+        assert result["step_id"] == "smoothing"
+        defaults = {str(k): k.default() for k in result["data_schema"].schema}
+        assert defaults == {"sensor.grid_import": "throttle_5min", "sensor.grid_export": "mean_1min"}
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"sensor.grid_import": "throttle_5min", "sensor.grid_export": "none"}
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {CONF_ENTITIES: ["sensor.grid_import"], CONF_UPLOAD_INTERVAL: "1h"}
+    assert entry.options == {
+        CONF_ENTITIES: ["sensor.grid_import", "sensor.grid_export"],
+        CONF_UPLOAD_INTERVAL: "1h",
+        CONF_SMOOTHING: {"sensor.grid_import": "throttle_5min", "sensor.grid_export": "none"},
+    }
 
 
 async def test_diagnostics_redacts_key(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
@@ -297,6 +330,7 @@ async def test_diagnostics_redacts_key(hass: HomeAssistant, aioclient_mock: Aioh
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
     assert API_KEY not in str(diagnostics)
     assert diagnostics["entry"][CONF_API_KEY] == "**REDACTED**"
+    assert diagnostics["smoothing"] == {}
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -330,9 +364,62 @@ async def test_uploader_reports_available_update_and_426(hass: HomeAssistant, ai
     await hass.async_block_till_done()
     uploader = entry.runtime_data
     issues = ir.async_get(hass)
-    assert uploader.latest_version == "0.9.0" and uploader.server_release == "1.1.0"
+    assert uploader.latest_version == "0.9.0" and uploader.server_release == "1.2.0"
     assert issues.async_get_issue(DOMAIN, f"update_available_{entry.entry_id}") is not None
     assert uploader.status == "update_required"
     assert issues.async_get_issue(DOMAIN, f"update_required_{entry.entry_id}") is not None
     assert uploader.pending == 1
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_uploader_smooths_with_default_mean(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer) -> None:
+    freezer.move_to("2026-01-02T03:04:00+00:00")
+    hass.states.async_set("sensor.a", "100", POWER)
+    aioclient_mock.post(READINGS_URL, json={"accepted": 1, "duplicates": 0})
+    entry = _entry(hass, ["sensor.a"], aioclient_mock, smoothing={})
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    uploader = entry.runtime_data
+    assert uploader.smoothing == {"sensor.a": "mean_1min"}
+    assert uploader.pending == 0 and _posted(aioclient_mock) == []
+
+    freezer.tick(45)
+    hass.states.async_set("sensor.a", "400", POWER)
+    hass.states.async_set("sensor.a", "400.0", POWER)
+    await hass.async_block_till_done()
+    assert uploader.pending == 0
+
+    freezer.tick(20)
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert uploader.pending == 1
+    await _flush(hass, entry)
+    sent = _posted(aioclient_mock)[-1]
+    assert sent == [
+        {
+            "entity_id": "sensor.a",
+            "timestamp": "2026-01-02T03:04:00Z",
+            "value": 175,
+            "unit": "W",
+            "device_class": "power",
+            "state_class": "measurement",
+            "smoothing": "time_simple_moving_average",
+            "smoothing_window": 60,
+        }
+    ]
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_unload_keeps_partial_window(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer) -> None:
+    freezer.move_to("2026-01-02T03:04:00+00:00")
+    hass.states.async_set("sensor.a", "10", POWER)
+    aioclient_mock.post(READINGS_URL, status=503, json={"error": {"code": "service_unavailable"}})
+    entry = _entry(hass, ["sensor.a"], aioclient_mock, smoothing={"sensor.a": "mean_15min"})
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    uploader = entry.runtime_data
+    assert uploader.pending == 0
+    freezer.tick(30)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert uploader.pending == 1
+    assert uploader._buffer[0]["smoothing_window"] == 900

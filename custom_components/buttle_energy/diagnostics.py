@@ -25,6 +25,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ButtleC
         "server_release": uploader.server_release,
         "entities": uploader.entities,
         "upload_interval": uploader.interval_name,
+        "smoothing": uploader.smoothing,
         "dashboard_suggestion": suggestion,
         "dashboard_skipped": skipped,
         "status": uploader.status,

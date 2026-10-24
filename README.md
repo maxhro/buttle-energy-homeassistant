@@ -51,6 +51,11 @@ Das Integrations-Icon zeigt Home Assistant ab Version 2026.3 an.
 3. Die Integration schlägt anhand deines **Energie-Dashboards** passende Sensoren
    vor (Netz, Solar, Batterie, Geräte). Du kannst die Auswahl anpassen und später
    über **Konfigurieren** ändern oder auf den Vorschlag zurücksetzen.
+4. Im nächsten Schritt legst du je Sensor eine **Glättung** fest – ähnlich dem
+   Filter-Helfer von Home Assistant: zeitgewichteter Mittelwert oder Drosselung
+   über 10 Sekunden bis 1 Stunde, oder keine Glättung. Standard ist ein
+   **1-Minuten-Mittelwert**; so wird höchstens ein Wert pro Minute und Sensor
+   übertragen. Die gewählte Glättung wird mit jedem Wert übermittelt.
 
 Die Integration sendet gesammelt in regelmäßigen Abständen und puffert bei
 Verbindungsproblemen lokal. Status, ausstehende Werte und letzte Übertragung
@@ -78,6 +83,7 @@ einen persönlichen Zugang voraus.
 HACS custom repository. Buttle aims to compare smart homes with each other (in
 aggregate) to identify improvement potential – this comparison is in development.
 Selected energy and power sensors (pre-selected from the Energy dashboard,
-adjustable) are transferred pseudonymously after consent on buttle.de; users can
+adjustable, smoothed per sensor – default: 1-minute time-weighted mean) are
+transferred pseudonymously after consent on buttle.de; users can
 delete their data at any time. Code: MIT. The buttle.de interface and services are
 not covered by this license.

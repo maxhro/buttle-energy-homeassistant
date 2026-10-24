@@ -37,6 +37,7 @@ from .api import (
 from .const import (
     API_MAJOR,
     CONF_ENTITIES,
+    CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
     CONF_USE_SUGGESTION,
     DEFAULT_UPLOAD_INTERVAL,
@@ -48,6 +49,7 @@ from .const import (
 )
 from .energy_dashboard import async_suggestion
 from .readings import compatibility, incompatibility, key_public_id
+from .smoothing import OPTIONS as SMOOTHING_OPTIONS, option_for
 
 REASONS_DE = {
     "external_statistic": "externe Statistik, keine Entität",
@@ -103,6 +105,21 @@ def _entity_schema(default_entities: list[str], default_interval: str = DEFAULT_
     )
 
 
+def _smoothing_schema(entities: list[str], choices: Mapping[str, Any] | None) -> vol.Schema:
+    selector = SelectSelector(
+        SelectSelectorConfig(
+            options=list(SMOOTHING_OPTIONS),
+            mode=SelectSelectorMode.DROPDOWN,
+            translation_key="smoothing",
+        )
+    )
+    return vol.Schema({vol.Required(entity, default=option_for(choices, entity)): selector for entity in entities})
+
+
+def _smoothing_choices(entities: list[str], user_input: Mapping[str, Any]) -> dict[str, str]:
+    return {entity: option_for(user_input, entity) for entity in entities}
+
+
 def _describe(suggestion: list[str], skipped: dict[str, str]) -> dict[str, str]:
     lines = [f"- `{entity}`" for entity in suggestion] or ["- (keine passenden Entitäten gefunden)"]
     skipped_lines = [f"- `{entity}`: {REASONS_DE.get(reason, reason)}" for entity, reason in list(skipped.items())[:15]]
@@ -128,6 +145,7 @@ class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._url = DEFAULT_URL
         self._api_key = ""
+        self._options: dict[str, Any] = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Ask for server and API key."""
@@ -170,14 +188,8 @@ class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "incompatible"
                 placeholders["invalid"] = ", ".join(invalid)
             else:
-                return self.async_create_entry(
-                    title=f"buttle.de ({self._url.split('://', 1)[1]})",
-                    data={CONF_URL: self._url, CONF_API_KEY: self._api_key},
-                    options={
-                        CONF_ENTITIES: selected,
-                        CONF_UPLOAD_INTERVAL: interval,
-                    },
-                )
+                self._options = {CONF_ENTITIES: selected, CONF_UPLOAD_INTERVAL: interval}
+                return await self.async_step_smoothing()
         default_entities = list(user_input.get(CONF_ENTITIES, [])) if user_input else suggestion
         default_interval = (
             str(user_input.get(CONF_UPLOAD_INTERVAL, DEFAULT_UPLOAD_INTERVAL))
@@ -190,6 +202,17 @@ class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders=placeholders,
         )
+
+    async def async_step_smoothing(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Choose the smoothing per entity (default: 1 min mean)."""
+        entities = self._options[CONF_ENTITIES]
+        if user_input is not None:
+            return self.async_create_entry(
+                title=f"buttle.de ({self._url.split('://', 1)[1]})",
+                data={CONF_URL: self._url, CONF_API_KEY: self._api_key},
+                options=self._options | {CONF_SMOOTHING: _smoothing_choices(entities, user_input)},
+            )
+        return self.async_show_form(step_id="smoothing", data_schema=_smoothing_schema(entities, None))
 
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         """The stored key was rejected."""
@@ -223,7 +246,10 @@ class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ButtleOptionsFlow(OptionsFlow):
-    """Adjust which entities are transferred and the upload interval."""
+    """Adjust which entities are transferred, the upload interval and the smoothing."""
+
+    def __init__(self) -> None:
+        self._options: dict[str, Any] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Show current selection, optionally reset to the dashboard suggestion."""
@@ -252,15 +278,22 @@ class ButtleOptionsFlow(OptionsFlow):
                 default_entities = selected
                 default_interval = interval
             else:
-                return self.async_create_entry(
-                    data={
-                        CONF_ENTITIES: selected,
-                        CONF_UPLOAD_INTERVAL: interval,
-                    }
-                )
+                self._options = {CONF_ENTITIES: selected, CONF_UPLOAD_INTERVAL: interval}
+                return await self.async_step_smoothing()
         schema = _entity_schema(default_entities, default_interval).extend(
             {vol.Optional(CONF_USE_SUGGESTION, default=False): BooleanSelector()}
         )
         return self.async_show_form(
             step_id="init", data_schema=schema, errors=errors, description_placeholders=placeholders
+        )
+
+    async def async_step_smoothing(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Choose the smoothing per entity; new entities start with the default."""
+        entities = self._options[CONF_ENTITIES]
+        if user_input is not None:
+            return self.async_create_entry(data=self._options | {CONF_SMOOTHING: _smoothing_choices(entities, user_input)})
+        current = self.config_entry.options.get(CONF_SMOOTHING)
+        return self.async_show_form(
+            step_id="smoothing",
+            data_schema=_smoothing_schema(entities, current if isinstance(current, dict) else None),
         )

@@ -30,6 +30,10 @@
         "data": {
           "api_key": "API key"
         }
+      },
+      "smoothing": {
+        "title": "Smoothing per entity",
+        "description": "Choose per entity how values are smoothed before sending, similar to the Home Assistant filter helper. \"Mean\" sends the time-weighted average of each window, \"At most one value\" sends the first value of each window and drops the rest. Fewer values are transferred with longer windows. Default: mean over 1 minute."
       }
     },
     "error": {
@@ -65,6 +69,10 @@
           "upload_interval": "How often new readings are sent to buttle.de.",
           "use_dashboard_suggestion": "Replaces the selection with the current suggestion; review and submit again."
         }
+      },
+      "smoothing": {
+        "title": "Smoothing per entity",
+        "description": "Choose per entity how values are smoothed before sending, similar to the Home Assistant filter helper. \"Mean\" sends the time-weighted average of each window, \"At most one value\" sends the first value of each window and drops the rest. Fewer values are transferred with longer windows. Default: mean over 1 minute."
       }
     },
     "error": {
@@ -112,6 +120,25 @@
     "update_available": {
       "title": "Buttle Energie: update available",
       "description": "Version {latest} of the integration is available (installed: {installed}). Update it in HACS."
+    }
+  },
+  "selector": {
+    "smoothing": {
+      "options": {
+        "mean_10s": "Mean over 10 seconds",
+        "mean_30s": "Mean over 30 seconds",
+        "mean_1min": "Mean over 1 minute",
+        "mean_5min": "Mean over 5 minutes",
+        "mean_15min": "Mean over 15 minutes",
+        "mean_1h": "Mean over 1 hour",
+        "throttle_10s": "At most one value per 10 seconds",
+        "throttle_30s": "At most one value per 30 seconds",
+        "throttle_1min": "At most one value per 1 minute",
+        "throttle_5min": "At most one value per 5 minutes",
+        "throttle_15min": "At most one value per 15 minutes",
+        "throttle_1h": "At most one value per 1 hour",
+        "none": "No smoothing (every change)"
+      }
     }
   }
 }

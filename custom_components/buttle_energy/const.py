@@ -7,15 +7,17 @@ from typing import Final
 
 DOMAIN: Final = "buttle_energy"
 # Keep in sync with manifest.json.
-VERSION: Final = "0.3.0"
+VERSION: Final = "0.4.0"
 API_MAJOR: Final = 1
-MIN_API_RELEASE: Final = "1.1.0"
+MIN_API_RELEASE: Final = "1.2.0"
 CLIENT_ID: Final = f"homeassistant/{VERSION}"
 DEFAULT_URL: Final = "https://buttle.de"
 
 CONF_ENTITIES: Final = "entities"
 CONF_USE_SUGGESTION: Final = "use_dashboard_suggestion"
 CONF_UPLOAD_INTERVAL: Final = "upload_interval"
+# Per-entity smoothing option keys, see smoothing.OPTIONS.
+CONF_SMOOTHING: Final = "smoothing"
 
 DEFAULT_UPLOAD_INTERVAL: Final = "5min"
 UPLOAD_INTERVAL: Final = timedelta(minutes=5)
