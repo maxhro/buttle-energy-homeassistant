@@ -7,7 +7,7 @@ from typing import Final
 
 DOMAIN: Final = "buttle_energy"
 # Keep in sync with manifest.json.
-VERSION: Final = "0.2.0"
+VERSION: Final = "0.3.0"
 API_MAJOR: Final = 1
 MIN_API_RELEASE: Final = "1.1.0"
 CLIENT_ID: Final = f"homeassistant/{VERSION}"
@@ -15,8 +15,36 @@ DEFAULT_URL: Final = "https://buttle.de"
 
 CONF_ENTITIES: Final = "entities"
 CONF_USE_SUGGESTION: Final = "use_dashboard_suggestion"
+CONF_UPLOAD_INTERVAL: Final = "upload_interval"
 
+DEFAULT_UPLOAD_INTERVAL: Final = "5min"
 UPLOAD_INTERVAL: Final = timedelta(minutes=5)
+
+INTERVAL_OPTIONS: Final = [
+    "1min",
+    "5min",
+    "15min",
+    "30min",
+    "1h",
+    "3h",
+    "8h",
+    "1day",
+    "3days",
+    "7days",
+]
+
+INTERVAL_MAP: Final[dict[str, timedelta]] = {
+    "1min": timedelta(minutes=1),
+    "5min": timedelta(minutes=5),
+    "15min": timedelta(minutes=15),
+    "30min": timedelta(minutes=30),
+    "1h": timedelta(hours=1),
+    "3h": timedelta(hours=3),
+    "8h": timedelta(hours=8),
+    "1day": timedelta(days=1),
+    "3days": timedelta(days=3),
+    "7days": timedelta(days=7),
+}
 MAX_READINGS_PER_REQUEST: Final = 200
 # Upper bound for the offline buffer; the oldest readings are dropped beyond it.
 MAX_BUFFERED_READINGS: Final = 20_000

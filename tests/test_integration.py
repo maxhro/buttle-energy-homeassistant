@@ -15,7 +15,13 @@ from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
-from custom_components.buttle_energy.const import CONF_ENTITIES, CONF_USE_SUGGESTION, DOMAIN, VERSION
+from custom_components.buttle_energy.const import (
+    CONF_ENTITIES,
+    CONF_UPLOAD_INTERVAL,
+    CONF_USE_SUGGESTION,
+    DOMAIN,
+    VERSION,
+)
 
 from .conftest import API_KEY, ENERGY, GAS, POWER, STATUS_BODY, URL
 
@@ -60,6 +66,8 @@ async def test_config_flow_uses_dashboard_suggestion(hass: HomeAssistant, aiocli
     assert "sensor.gas" in result["description_placeholders"]["skipped"]
     default = next(k.default() for k in result["data_schema"].schema if k == CONF_ENTITIES)
     assert default == ["sensor.grid_import", "sensor.grid_export"]
+    default_interval = next(k.default() for k in result["data_schema"].schema if k == CONF_UPLOAD_INTERVAL)
+    assert default_interval == "5min"
     assert aioclient_mock.mock_calls[0][3]["Authorization"] == f"Bearer {API_KEY}"
     assert aioclient_mock.mock_calls[0][3]["X-Buttle-Client"] == f"homeassistant/{VERSION}"
 
@@ -71,7 +79,10 @@ async def test_config_flow_uses_dashboard_suggestion(hass: HomeAssistant, aiocli
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {CONF_URL: URL, CONF_API_KEY: API_KEY}
-    assert result["options"] == {CONF_ENTITIES: ["sensor.grid_import", "sensor.other_power"]}
+    assert result["options"] == {
+        CONF_ENTITIES: ["sensor.grid_import", "sensor.other_power"],
+        CONF_UPLOAD_INTERVAL: "5min",
+    }
 
 
 @pytest.mark.parametrize(
@@ -102,7 +113,11 @@ async def test_config_flow_errors(
 
 
 def _entry(
-    hass: HomeAssistant, entities: list[str], aioclient_mock: AiohttpClientMocker | None = None, status: dict | None = None
+    hass: HomeAssistant,
+    entities: list[str],
+    aioclient_mock: AiohttpClientMocker | None = None,
+    status: dict | None = None,
+    upload_interval: str = "5min",
 ) -> MockConfigEntry:
     if aioclient_mock is not None:
         aioclient_mock.get(STATUS_URL, json=status or STATUS_BODY)
@@ -110,7 +125,7 @@ def _entry(
         domain=DOMAIN,
         unique_id=URL,
         data={CONF_URL: URL, CONF_API_KEY: API_KEY},
-        options={CONF_ENTITIES: entities},
+        options={CONF_ENTITIES: entities, CONF_UPLOAD_INTERVAL: upload_interval},
     )
     entry.add_to_hass(hass)
     return entry
@@ -228,6 +243,8 @@ async def test_options_flow_reset_to_suggestion(hass: HomeAssistant, aioclient_m
         result = await hass.config_entries.options.async_init(entry.entry_id)
         default = next(k.default() for k in result["data_schema"].schema if k == CONF_ENTITIES)
         assert default == ["sensor.other_power"]
+        default_interval = next(k.default() for k in result["data_schema"].schema if k == CONF_UPLOAD_INTERVAL)
+        assert default_interval == "5min"
         result = await hass.config_entries.options.async_configure(
             result["flow_id"], {CONF_ENTITIES: ["sensor.other_power"], CONF_USE_SUGGESTION: True}
         )
@@ -238,7 +255,36 @@ async def test_options_flow_reset_to_suggestion(hass: HomeAssistant, aioclient_m
             result["flow_id"], {CONF_ENTITIES: default, CONF_USE_SUGGESTION: False}
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {CONF_ENTITIES: ["sensor.grid_import", "sensor.grid_export"]}
+    assert entry.options == {
+        CONF_ENTITIES: ["sensor.grid_import", "sensor.grid_export"],
+        CONF_UPLOAD_INTERVAL: "5min",
+    }
+
+
+async def test_config_flow_custom_upload_interval(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    await _dashboard(hass)
+    aioclient_mock.get(f"{URL}/api/v1/status", json=STATUS_BODY)
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_URL: URL, CONF_API_KEY: API_KEY})
+    with patch("custom_components.buttle_energy.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_ENTITIES: ["sensor.grid_import"], CONF_UPLOAD_INTERVAL: "15min"}
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["options"] == {CONF_ENTITIES: ["sensor.grid_import"], CONF_UPLOAD_INTERVAL: "15min"}
+
+
+async def test_options_flow_custom_upload_interval(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    await _dashboard(hass)
+    entry = _entry(hass, ["sensor.grid_import"], upload_interval="5min")
+    with patch("custom_components.buttle_energy.async_setup_entry", return_value=True):
+        await hass.config_entries.async_setup(entry.entry_id)
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_ENTITIES: ["sensor.grid_import"], CONF_UPLOAD_INTERVAL: "1h"}
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {CONF_ENTITIES: ["sensor.grid_import"], CONF_UPLOAD_INTERVAL: "1h"}
 
 
 async def test_diagnostics_redacts_key(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:

@@ -28,7 +28,11 @@ from .api import (
 from .const import (
     API_MAJOR,
     CONF_ENTITIES,
+    CONF_UPLOAD_INTERVAL,
+    DEFAULT_UPLOAD_INTERVAL,
     DOMAIN,
+    INTERVAL_MAP,
+    INTERVAL_OPTIONS,
     MAX_BUFFERED_READINGS,
     MAX_READINGS_PER_REQUEST,
     MIN_API_RELEASE,
@@ -81,6 +85,17 @@ class ButtleUploader:
         """Number of readings waiting for upload."""
         return len(self._buffer)
 
+    @property
+    def interval_name(self) -> str:
+        """Configured upload interval key (e.g. '5min')."""
+        choice = str(self.entry.options.get(CONF_UPLOAD_INTERVAL, DEFAULT_UPLOAD_INTERVAL))
+        return choice if choice in INTERVAL_OPTIONS else DEFAULT_UPLOAD_INTERVAL
+
+    @property
+    def interval(self) -> timedelta:
+        """Configured upload interval as timedelta."""
+        return INTERVAL_MAP[self.interval_name]
+
     async def async_start(self) -> None:
         """Restore the buffer, record current values and start listening."""
         stored = await self._store.async_load()
@@ -95,7 +110,7 @@ class ButtleUploader:
                 async_track_state_change_event(self.hass, self.entities, self._handle_state_change)
             )
         self._unsubscribers.append(
-            async_track_time_interval(self.hass, self._handle_interval, UPLOAD_INTERVAL)
+            async_track_time_interval(self.hass, self._handle_interval, self.interval)
         )
         self._unsubscribers.append(
             self.hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, self._handle_stop)

@@ -15,6 +15,10 @@ from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -30,7 +34,18 @@ from .api import (
     ButtleRateLimitError,
     normalize_url,
 )
-from .const import API_MAJOR, CONF_ENTITIES, CONF_USE_SUGGESTION, DEFAULT_URL, DOMAIN, MIN_API_RELEASE, VERSION
+from .const import (
+    API_MAJOR,
+    CONF_ENTITIES,
+    CONF_UPLOAD_INTERVAL,
+    CONF_USE_SUGGESTION,
+    DEFAULT_UPLOAD_INTERVAL,
+    DEFAULT_URL,
+    DOMAIN,
+    INTERVAL_OPTIONS,
+    MIN_API_RELEASE,
+    VERSION,
+)
 from .energy_dashboard import async_suggestion
 from .readings import compatibility, incompatibility, key_public_id
 
@@ -70,11 +85,19 @@ async def _async_validate(hass: HomeAssistant, url: str, api_key: str) -> tuple[
     return url, {"base": problem} if problem else {}
 
 
-def _entity_schema(default: list[str]) -> vol.Schema:
+def _entity_schema(default_entities: list[str], default_interval: str = DEFAULT_UPLOAD_INTERVAL) -> vol.Schema:
+    if default_interval not in INTERVAL_OPTIONS:
+        default_interval = DEFAULT_UPLOAD_INTERVAL
     return vol.Schema(
         {
-            vol.Optional(CONF_ENTITIES, default=default): EntitySelector(
+            vol.Optional(CONF_ENTITIES, default=default_entities): EntitySelector(
                 EntitySelectorConfig(domain="sensor", device_class=["energy", "power"], multiple=True)
+            ),
+            vol.Optional(CONF_UPLOAD_INTERVAL, default=default_interval): SelectSelector(
+                SelectSelectorConfig(
+                    options=[SelectOptionDict(value=opt, label=opt) for opt in INTERVAL_OPTIONS],
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
             ),
         }
     )
@@ -138,6 +161,9 @@ class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
         placeholders = _describe(suggestion, skipped) | {"invalid": ""}
         if user_input is not None:
             selected = list(user_input.get(CONF_ENTITIES, []))
+            interval = str(user_input.get(CONF_UPLOAD_INTERVAL, DEFAULT_UPLOAD_INTERVAL))
+            if interval not in INTERVAL_OPTIONS:
+                interval = DEFAULT_UPLOAD_INTERVAL
             if not selected:
                 errors["base"] = "no_entities"
             elif invalid := _incompatible(self.hass, selected):
@@ -147,12 +173,20 @@ class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"buttle.de ({self._url.split('://', 1)[1]})",
                     data={CONF_URL: self._url, CONF_API_KEY: self._api_key},
-                    options={CONF_ENTITIES: selected},
+                    options={
+                        CONF_ENTITIES: selected,
+                        CONF_UPLOAD_INTERVAL: interval,
+                    },
                 )
-        default = list(user_input.get(CONF_ENTITIES, [])) if user_input else suggestion
+        default_entities = list(user_input.get(CONF_ENTITIES, [])) if user_input else suggestion
+        default_interval = (
+            str(user_input.get(CONF_UPLOAD_INTERVAL, DEFAULT_UPLOAD_INTERVAL))
+            if user_input
+            else DEFAULT_UPLOAD_INTERVAL
+        )
         return self.async_show_form(
             step_id="entities",
-            data_schema=_entity_schema(default),
+            data_schema=_entity_schema(default_entities, default_interval),
             errors=errors,
             description_placeholders=placeholders,
         )
@@ -189,28 +223,44 @@ class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ButtleOptionsFlow(OptionsFlow):
-    """Adjust which entities are transferred."""
+    """Adjust which entities are transferred and the upload interval."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Show current selection, optionally reset to the dashboard suggestion."""
         suggestion, skipped = await async_suggestion(self.hass)
         placeholders = _describe(suggestion, skipped) | {"invalid": ""}
         errors: dict[str, str] = {}
-        default = list(self.config_entry.options.get(CONF_ENTITIES, []))
+        default_entities = list(self.config_entry.options.get(CONF_ENTITIES, []))
+        default_interval = str(self.config_entry.options.get(CONF_UPLOAD_INTERVAL, DEFAULT_UPLOAD_INTERVAL))
+        if default_interval not in INTERVAL_OPTIONS:
+            default_interval = DEFAULT_UPLOAD_INTERVAL
         if user_input is not None:
             selected = list(user_input.get(CONF_ENTITIES, []))
+            interval = str(user_input.get(CONF_UPLOAD_INTERVAL, default_interval))
+            if interval not in INTERVAL_OPTIONS:
+                interval = DEFAULT_UPLOAD_INTERVAL
             if user_input.get(CONF_USE_SUGGESTION):
-                default = suggestion
+                default_entities = suggestion
+                default_interval = interval
             elif not selected:
                 errors["base"] = "no_entities"
-                default = selected
+                default_entities = selected
+                default_interval = interval
             elif invalid := _incompatible(self.hass, selected):
                 errors["base"] = "incompatible"
                 placeholders["invalid"] = ", ".join(invalid)
-                default = selected
+                default_entities = selected
+                default_interval = interval
             else:
-                return self.async_create_entry(data={CONF_ENTITIES: selected})
-        schema = _entity_schema(default).extend({vol.Optional(CONF_USE_SUGGESTION, default=False): BooleanSelector()})
+                return self.async_create_entry(
+                    data={
+                        CONF_ENTITIES: selected,
+                        CONF_UPLOAD_INTERVAL: interval,
+                    }
+                )
+        schema = _entity_schema(default_entities, default_interval).extend(
+            {vol.Optional(CONF_USE_SUGGESTION, default=False): BooleanSelector()}
+        )
         return self.async_show_form(
             step_id="init", data_schema=schema, errors=errors, description_placeholders=placeholders
         )

@@ -19,10 +19,12 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ButtleC
     suggestion, skipped = await async_suggestion(hass)
     return {
         "entry": async_redact_data(dict(entry.data), {CONF_API_KEY}),
+        "options": dict(entry.options),
         "integration_version": VERSION,
         "latest_integration_version": uploader.latest_version,
         "server_release": uploader.server_release,
         "entities": uploader.entities,
+        "upload_interval": uploader.interval_name,
         "dashboard_suggestion": suggestion,
         "dashboard_skipped": skipped,
         "status": uploader.status,

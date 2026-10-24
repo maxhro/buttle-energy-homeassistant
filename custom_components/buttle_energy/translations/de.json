@@ -17,7 +17,11 @@
         "title": "Entitäten auswählen",
         "description": "Vorschlag aus deinem Energie-Dashboard:\n{suggestion}\n\nNicht vorgeschlagen:\n{skipped}\n\nDu kannst Energie- (Wh/kWh/MWh) und Leistungssensoren (W/kW) ergänzen oder entfernen. {invalid}",
         "data": {
-          "entities": "Zu übertragende Entitäten"
+          "entities": "Zu übertragende Entitäten",
+          "upload_interval": "Übertragungsintervall"
+        },
+        "data_description": {
+          "upload_interval": "Wie oft neue Messwerte an buttle.de übertragen werden."
         }
       },
       "reauth_confirm": {
@@ -54,9 +58,11 @@
         "description": "Vorschlag aus deinem Energie-Dashboard:\n{suggestion}\n\nNicht vorgeschlagen:\n{skipped}\n\n{invalid}",
         "data": {
           "entities": "Zu übertragende Entitäten",
+          "upload_interval": "Übertragungsintervall",
           "use_dashboard_suggestion": "Auf Dashboard-Vorschlag zurücksetzen"
         },
         "data_description": {
+          "upload_interval": "Wie oft neue Messwerte an buttle.de übertragen werden.",
           "use_dashboard_suggestion": "Ersetzt die Auswahl durch den aktuellen Vorschlag; danach prüfen und erneut absenden."
         }
       }

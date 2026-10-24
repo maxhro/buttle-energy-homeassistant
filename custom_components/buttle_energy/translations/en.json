@@ -17,7 +17,11 @@
         "title": "Select entities",
         "description": "Suggestion from your energy dashboard:\n{suggestion}\n\nNot suggested:\n{skipped}\n\nYou can add or remove energy (Wh/kWh/MWh) and power (W/kW) sensors. {invalid}",
         "data": {
-          "entities": "Entities to transfer"
+          "entities": "Entities to transfer",
+          "upload_interval": "Upload interval"
+        },
+        "data_description": {
+          "upload_interval": "How often new readings are sent to buttle.de."
         }
       },
       "reauth_confirm": {
@@ -54,9 +58,11 @@
         "description": "Suggestion from your energy dashboard:\n{suggestion}\n\nNot suggested:\n{skipped}\n\n{invalid}",
         "data": {
           "entities": "Entities to transfer",
+          "upload_interval": "Upload interval",
           "use_dashboard_suggestion": "Reset to dashboard suggestion"
         },
         "data_description": {
+          "upload_interval": "How often new readings are sent to buttle.de.",
           "use_dashboard_suggestion": "Replaces the selection with the current suggestion; review and submit again."
         }
       }
