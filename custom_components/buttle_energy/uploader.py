@@ -28,6 +28,7 @@ from .api import (
 from .const import (
     API_MAJOR,
     CONF_ENTITIES,
+    CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
     DEFAULT_UPLOAD_INTERVAL,
     DOMAIN,
@@ -50,8 +51,11 @@ from .const import (
     VERSION,
 )
 from .readings import build_reading, compatibility, invalid_indices
+from .smoothing import Smoother, option_for
 
 _LOGGER = logging.getLogger(__name__)
+# How often finished smoothing windows are checked; shorter than the smallest window.
+SMOOTHING_TICK = timedelta(seconds=5)
 
 
 class ButtleUploader:
@@ -62,6 +66,12 @@ class ButtleUploader:
         self.entry = entry
         self.client = client
         self.entities: list[str] = list(entry.options.get(CONF_ENTITIES, []))
+        choices = entry.options.get(CONF_SMOOTHING)
+        self.smoothing: dict[str, str] = {
+            entity_id: option_for(choices if isinstance(choices, dict) else None, entity_id)
+            for entity_id in self.entities
+        }
+        self._smoothers = {entity_id: Smoother(option) for entity_id, option in self.smoothing.items()}
         self.status = STATUS_PENDING
         self.last_upload: datetime | None = None
         self.last_error: str | None = None
@@ -111,6 +121,9 @@ class ButtleUploader:
             )
         self._unsubscribers.append(
             async_track_time_interval(self.hass, self._handle_interval, self.interval)
+        )
+        self._unsubscribers.append(
+            async_track_time_interval(self.hass, self._handle_tick, SMOOTHING_TICK)
         )
         self._unsubscribers.append(
             self.hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, self._handle_stop)
@@ -180,6 +193,7 @@ class ButtleUploader:
         """Stop listening and persist the buffer."""
         while self._unsubscribers:
             self._unsubscribers.pop()()
+        self._drain()
         await self._store.async_save(self._data())
 
     @callback
@@ -218,11 +232,35 @@ class ButtleUploader:
     @callback
     def _record(self, entity_id: str, state: str, attributes: Any, when: datetime) -> None:
         reading = build_reading(entity_id, state, attributes, when)
-        if reading is None:
+        smoother = self._smoothers.get(entity_id)
+        if reading is None or smoother is None:
             return
-        self._append(reading)
+        self._enqueue(smoother.add(reading, when))
+
+    @callback
+    def _enqueue(self, readings: list[dict[str, Any]]) -> None:
+        if not readings:
+            return
+        for reading in readings:
+            self._append(reading)
         self._store.async_delay_save(self._data, 30)
         self._notify()
+
+    @callback
+    def _flush_windows(self, now: datetime) -> None:
+        for smoother in self._smoothers.values():
+            self._enqueue(smoother.flush(now))
+
+    @callback
+    def _drain(self) -> None:
+        now = dt_util.utcnow()
+        for smoother in self._smoothers.values():
+            for reading in smoother.drain(now):
+                self._append(reading)
+
+    @callback
+    def _handle_tick(self, now: datetime) -> None:
+        self._flush_windows(now)
 
     @callback
     def _handle_state_change(self, event: Event[EventStateChangedData]) -> None:
@@ -234,10 +272,12 @@ class ButtleUploader:
         await self.async_upload()
 
     async def _handle_stop(self, _event: Event) -> None:
+        self._drain()
         await self._store.async_save(self._data())
 
     async def async_upload(self) -> None:
         """Send buffered readings in batches until done or an error stops us."""
+        self._flush_windows(dt_util.utcnow())
         if self._uploading or self._paused or not self._buffer:
             if not self._buffer and self.status == STATUS_PENDING:
                 self.status = STATUS_OK

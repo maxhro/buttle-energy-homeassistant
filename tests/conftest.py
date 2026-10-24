@@ -14,7 +14,7 @@ GAS = {"unit_of_measurement": "m³", "device_class": "gas", "state_class": "tota
 STATUS_BODY = {
     "status": "ok",
     "api_version": 1,
-    "api_release": "1.1.0",
+    "api_release": "1.2.0",
     "client": {"minimum": "0.2.0", "latest": "0.2.0"},
     "scopes": ["readings:write"],
     "limits": {"requests_per_minute": 60, "max_readings_per_request": 200, "max_body_bytes": 262144},
