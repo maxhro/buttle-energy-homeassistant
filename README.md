@@ -59,8 +59,10 @@ erscheint eine Reparaturmeldung in Home Assistant.
 
 ## Versionen
 
-Die Integration und buttle.de werden gemeinsam versioniert. Bitte halte die
-Integration über HACS aktuell; veraltete Versionen werden vom Server abgelehnt.
+Die Integration wird unabhängig von der Webanwendung und der Schnittstelle von buttle.de
+versioniert. Nur bei Änderungen der Schnittstellenfunktionen wird die API-Version erhöht.
+Bitte halte die Integration über HACS aktuell; veraltete Versionen werden vom Server
+abgelehnt, falls eine neuere Mindestversion vorausgesetzt wird.
 
 ## Lizenz
 
