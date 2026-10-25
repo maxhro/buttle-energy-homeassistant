@@ -48,6 +48,9 @@ Das Integrations-Icon zeigt Home Assistant ab Version 2026.3 an.
    Einwilligung erteilen und einen Zugangsschlüssel erstellen. Eine Anleitung
    findest du nach der Anmeldung unter **Hilfe & Wissen → Home Assistant einrichten**.
 2. In Home Assistant den Zugangsschlüssel eintragen.
+   Ab Version 0.4.2 wird die getrennte Buttle-Verbindung automatisch vorbelegt.
+   Bestehende Einträge mit der bisherigen Standardadresse werden beim Neustart
+   automatisch umgestellt; eigene Serveradressen und Einstellungen bleiben erhalten.
 3. Die Integration schlägt anhand deines **Energie-Dashboards** passende Sensoren
    vor (Netz, Solar, Batterie, Geräte). Du kannst die Auswahl anpassen und später
    über **Konfigurieren** ändern oder auf den Vorschlag zurücksetzen.

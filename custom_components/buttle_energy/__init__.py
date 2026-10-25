@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ButtleClient
+from .const import DEFAULT_URL
 from .uploader import ButtleUploader
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
@@ -17,6 +18,12 @@ type ButtleConfigEntry = ConfigEntry[ButtleUploader]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ButtleConfigEntry) -> bool:
     """Start collecting and uploading readings for one buttle.de account."""
+    if entry.data[CONF_URL].strip().rstrip("/") == "https://buttle.de":
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, CONF_URL: DEFAULT_URL},
+            unique_id=DEFAULT_URL if entry.unique_id == "https://buttle.de" else entry.unique_id,
+        )
     client = ButtleClient(async_get_clientsession(hass), entry.data[CONF_URL], entry.data[CONF_API_KEY])
     uploader = ButtleUploader(hass, entry, client)
     entry.runtime_data = uploader

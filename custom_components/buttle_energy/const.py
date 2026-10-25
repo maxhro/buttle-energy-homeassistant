@@ -7,11 +7,11 @@ from typing import Final
 
 DOMAIN: Final = "buttle_energy"
 # Keep in sync with manifest.json.
-VERSION: Final = "0.4.1"
+VERSION: Final = "0.4.2"
 API_MAJOR: Final = 1
 MIN_API_RELEASE: Final = "1.2.0"
 CLIENT_ID: Final = f"homeassistant/{VERSION}"
-DEFAULT_URL: Final = "https://buttle.de"
+DEFAULT_URL: Final = "https://api.buttle.de"
 
 CONF_ENTITIES: Final = "entities"
 CONF_USE_SUGGESTION: Final = "use_dashboard_suggestion"

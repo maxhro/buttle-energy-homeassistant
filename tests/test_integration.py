@@ -20,6 +20,7 @@ from custom_components.buttle_energy.const import (
     CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
     CONF_USE_SUGGESTION,
+    DEFAULT_URL,
     DOMAIN,
     VERSION,
 )
@@ -60,6 +61,8 @@ async def test_config_flow_uses_dashboard_suggestion(hass: HomeAssistant, aiocli
 
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     assert result["type"] is FlowResultType.FORM
+    default_url = next(k.default() for k in result["data_schema"].schema if k == CONF_URL)
+    assert default_url == DEFAULT_URL == "https://api.buttle.de"
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_URL: URL + "/", CONF_API_KEY: API_KEY})
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "entities"
@@ -148,6 +151,38 @@ def _entry(
 async def _flush(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     await entry.runtime_data.async_upload()
     await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize("url", ["https://buttle.de", "https://buttle.de/", " https://buttle.de/ "])
+async def test_setup_moves_previous_default_to_api(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, url: str
+) -> None:
+    aioclient_mock.get("https://api.buttle.de/api/v1/status", json=STATUS_BODY)
+    entry = _entry(hass, [])
+    hass.config_entries.async_update_entry(
+        entry, data={CONF_URL: url, CONF_API_KEY: API_KEY}, unique_id="https://buttle.de"
+    )
+    entry_id = entry.entry_id
+    options = dict(entry.options)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.data == {CONF_URL: "https://api.buttle.de", CONF_API_KEY: API_KEY}
+    assert entry.unique_id == "https://api.buttle.de"
+    assert entry.entry_id == entry_id
+    assert entry.options == options
+    assert str(aioclient_mock.mock_calls[0][1]) == "https://api.buttle.de/api/v1/status"
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_setup_preserves_custom_server(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    entry = _entry(hass, [], aioclient_mock)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.data == {CONF_URL: URL, CONF_API_KEY: API_KEY}
+    assert entry.unique_id == URL
+    assert await hass.config_entries.async_unload(entry.entry_id)
 
 
 def _posted(aioclient_mock: AiohttpClientMocker) -> list[list[dict[str, Any]]]:
