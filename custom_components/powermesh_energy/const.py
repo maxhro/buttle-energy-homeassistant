@@ -7,11 +7,13 @@ from typing import Final
 
 DOMAIN: Final = "powermesh_energy"
 # Keep in sync with manifest.json.
-VERSION: Final = "1.0.0"
-API_MAJOR: Final = 2
-MIN_API_RELEASE: Final = "2.0.0"
+VERSION: Final = "0.1.0"
+MQTT_CONTRACT: Final = "0.1.0"
+MIN_API_RELEASE: Final = "0.1.0"
 CLIENT_ID: Final = f"homeassistant/{VERSION}"
-DEFAULT_URL: Final = "https://api.powermesh.de"
+DEFAULT_HOST: Final = ""
+DEFAULT_PORT: Final = 8883
+MAX_BODY_BYTES: Final = 131072
 
 CONF_ENTITIES: Final = "entities"
 CONF_USE_SUGGESTION: Final = "use_dashboard_suggestion"

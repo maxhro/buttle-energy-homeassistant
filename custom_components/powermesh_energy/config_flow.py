@@ -8,9 +8,8 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
-from homeassistant.const import CONF_API_KEY, CONF_URL
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -32,23 +31,21 @@ from .api import (
     PowermeshForbiddenError,
     PowermeshOutdatedError,
     PowermeshRateLimitError,
-    normalize_url,
+    validate_connection,
 )
 from .const import (
-    API_MAJOR,
     CONF_ENTITIES,
     CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
     CONF_USE_SUGGESTION,
     DEFAULT_UPLOAD_INTERVAL,
-    DEFAULT_URL,
+    DEFAULT_HOST,
+    DEFAULT_PORT,
     DOMAIN,
     INTERVAL_OPTIONS,
-    MIN_API_RELEASE,
-    VERSION,
 )
 from .energy_dashboard import async_suggestion
-from .readings import compatibility, incompatibility, key_public_id
+from .readings import incompatibility
 from .smoothing import OPTIONS as SMOOTHING_OPTIONS, option_for
 
 REASONS_DE = {
@@ -61,30 +58,36 @@ REASONS_DE = {
 }
 
 
-async def _async_validate(hass: HomeAssistant, url: str, api_key: str) -> tuple[str, dict[str, str]]:
-    """Return (normalized url, errors) after checking the key against /status."""
+async def _async_validate(data: Mapping[str, Any]) -> dict[str, str]:
+    """Check credentials with a TLS MQTT application status exchange."""
     try:
-        url = normalize_url(url)
-    except ValueError as err:
-        return url, {CONF_URL: str(err)}
-    if key_public_id(api_key) is None:
-        return url, {CONF_API_KEY: "invalid_key_format"}
+        validate_connection(data[CONF_HOST], data[CONF_PORT], data[CONF_USERNAME], data[CONF_PASSWORD])
+    except (ValueError, KeyError):
+        return {"base": "invalid_connection"}
     try:
-        server = await PowermeshClient(async_get_clientsession(hass), url, api_key).status()
+        await PowermeshClient(data[CONF_HOST], data[CONF_PORT], data[CONF_USERNAME], data[CONF_PASSWORD]).status()
     except PowermeshOutdatedError:
-        return url, {"base": "update_required"}
+        return {"base": "api_incompatible"}
     except PowermeshAuthError:
-        return url, {"base": "invalid_auth"}
+        return {"base": "invalid_auth"}
     except PowermeshForbiddenError:
-        return url, {"base": "consent_required"}
+        return {"base": "consent_required"}
     except PowermeshRateLimitError:
-        return url, {"base": "rate_limited"}
+        return {"base": "rate_limited"}
     except PowermeshConnectionError:
-        return url, {"base": "cannot_connect"}
+        return {"base": "cannot_connect"}
     except PowermeshError:
-        return url, {"base": "unknown"}
-    problem, _ = compatibility(server, VERSION, API_MAJOR, MIN_API_RELEASE)
-    return url, {"base": problem} if problem else {}
+        return {"base": "unknown"}
+    return {}
+
+
+def _connection_schema(data: Mapping[str, Any]) -> vol.Schema:
+    return vol.Schema({
+        vol.Required(CONF_HOST, default=data.get(CONF_HOST, DEFAULT_HOST)): str,
+        vol.Required(CONF_PORT, default=data.get(CONF_PORT, DEFAULT_PORT)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+        vol.Required(CONF_USERNAME, default=data.get(CONF_USERNAME, "")): str,
+        vol.Required(CONF_PASSWORD): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+    })
 
 
 def _entity_schema(default_entities: list[str], default_interval: str = DEFAULT_UPLOAD_INTERVAL) -> vol.Schema:
@@ -143,33 +146,23 @@ class PowermeshConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
-        self._url = DEFAULT_URL
-        self._api_key = ""
+        self._connection: dict[str, Any] = {}
         self._options: dict[str, Any] = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Ask for server and API key."""
+        """Ask for the separate TLS broker and personal credentials."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            url, errors = await _async_validate(self.hass, user_input[CONF_URL], user_input[CONF_API_KEY])
+            errors = await _async_validate(user_input)
             if not errors:
-                await self.async_set_unique_id(url)
+                await self.async_set_unique_id(f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_USERNAME]}")
                 self._abort_if_unique_id_configured()
-                self._url, self._api_key = url, user_input[CONF_API_KEY].strip()
+                self._connection = {field: user_input[field] for field in (CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)}
                 return await self.async_step_entities()
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_URL, default=(user_input or {}).get(CONF_URL, DEFAULT_URL)): TextSelector(
-                    TextSelectorConfig(type=TextSelectorType.URL)
-                ),
-                vol.Required(CONF_API_KEY): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
-            }
-        )
         return self.async_show_form(
             step_id="user",
-            data_schema=schema,
+            data_schema=_connection_schema(user_input or {}),
             errors=errors,
-            description_placeholders={"default_url": DEFAULT_URL},
         )
 
     async def async_step_entities(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -208,8 +201,8 @@ class PowermeshConfigFlow(ConfigFlow, domain=DOMAIN):
         entities = self._options[CONF_ENTITIES]
         if user_input is not None:
             return self.async_create_entry(
-                title=f"powermesh.de ({self._url.split('://', 1)[1]})",
-                data={CONF_URL: self._url, CONF_API_KEY: self._api_key},
+                title="Powermesh Energie",
+                data=self._connection,
                 options=self._options | {CONF_SMOOTHING: _smoothing_choices(entities, user_input)},
             )
         return self.async_show_form(step_id="smoothing", data_schema=_smoothing_schema(entities, None))
@@ -219,23 +212,22 @@ class PowermeshConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Ask for a new API key."""
+        """New credentials do not silently authorize previously buffered data."""
         entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         assert entry is not None
         errors: dict[str, str] = {}
         if user_input is not None:
-            _, errors = await _async_validate(self.hass, entry.data[CONF_URL], user_input[CONF_API_KEY])
+            errors = await _async_validate(user_input)
             if not errors:
+                connection = {field: user_input[field] for field in (CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)}
                 return self.async_update_reload_and_abort(
-                    entry, data={**entry.data, CONF_API_KEY: user_input[CONF_API_KEY].strip()}
+                    entry, data=connection,
+                    unique_id=f"{connection[CONF_HOST]}:{connection[CONF_PORT]}/{connection[CONF_USERNAME]}",
                 )
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_API_KEY): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))}
-            ),
+            data_schema=_connection_schema(entry.data),
             errors=errors,
-            description_placeholders={"url": entry.data[CONF_URL]},
         )
 
     @staticmethod

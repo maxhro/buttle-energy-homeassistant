@@ -3,14 +3,12 @@
     "step": {
       "user": {
         "title": "Connect powermesh.de",
-        "description": "Create an API key on powermesh.de under Mein Bereich → Energie-API and give consent to the transfer. The key is shown only once.",
+        "description": "Give consent on powermesh.de and create a personal MQTT access. Enter the broker settings shown there. Your existing local MQTT setup is not changed.",
         "data": {
-          "url": "Server",
-          "api_key": "API key"
-        },
-        "data_description": {
-          "url": "Usually {default_url}",
-          "api_key": "Format bte_…"
+          "host": "Broker hostname",
+          "port": "TLS port",
+          "username": "MQTT username",
+          "password": "MQTT password"
         }
       },
       "entities": {
@@ -25,10 +23,13 @@
         }
       },
       "reauth_confirm": {
-        "title": "New API key",
-        "description": "powermesh.de ({url}) rejected the stored API key. Create a new key and enter it here.",
+        "title": "New MQTT access",
+        "description": "Enter your new personal access. Buffered readings are not automatically transferred to a new access.",
         "data": {
-          "api_key": "API key"
+          "host": "Broker hostname",
+          "port": "TLS port",
+          "username": "MQTT username",
+          "password": "MQTT password"
         }
       },
       "smoothing": {
@@ -37,7 +38,8 @@
       }
     },
     "error": {
-      "invalid_auth": "API key rejected.",
+      "invalid_auth": "MQTT access rejected.",
+      "invalid_connection": "Enter a hostname, valid TLS port and complete personal MQTT credentials.",
       "invalid_key_format": "This is not a powermesh.de API key (bte_…).",
       "consent_required": "Consent to the transfer is missing on powermesh.de, or the key lacks the write scope.",
       "rate_limited": "Too many requests. Try again in a minute.",
@@ -52,7 +54,7 @@
     },
     "abort": {
       "already_configured": "This server is already configured.",
-      "reauth_successful": "API key updated."
+      "reauth_successful": "MQTT access updated."
     }
   },
   "options": {
@@ -105,9 +107,13 @@
     }
   },
   "issues": {
+    "buffer_generation_changed": {
+      "title": "Powermesh Energie: pending readings need attention",
+      "description": "Buffered readings cannot be sent with the current access or were rejected. They have not been discarded. Check the status and preserve any needed local data before explicitly removing and recreating the entry. Removing the entry deletes its local buffer."
+    },
     "consent_required": {
       "title": "powermesh.de: consent required",
-      "description": "powermesh.de refuses to store readings. Give consent to the energy data transfer at {url} (Mein Bereich → Energie-API) and check the key's scopes. Readings are buffered locally meanwhile; reload the integration afterwards."
+      "description": "powermesh.de refuses to store readings. Check consent and your personal MQTT access at {url}. Pending readings stay local; reload the integration after resolving the problem."
     },
     "update_required": {
       "title": "Powermesh Energie: update required",

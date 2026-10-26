@@ -3,14 +3,12 @@
     "step": {
       "user": {
         "title": "powermesh.de verbinden",
-        "description": "Lege auf powermesh.de unter Mein Bereich → Energie-API einen API-Schlüssel an und erteile die Einwilligung zur Übertragung. Der Schlüssel wird nur einmal angezeigt.",
+        "description": "Erteile auf powermesh.de die Einwilligung und erstelle einen persönlichen MQTT-Zugang. Trage die dort angezeigten Broker-Einstellungen ein. Deine bestehende lokale MQTT-Einrichtung bleibt unverändert.",
         "data": {
-          "url": "Server",
-          "api_key": "API-Schlüssel"
-        },
-        "data_description": {
-          "url": "In der Regel {default_url}",
-          "api_key": "Format bte_…"
+          "host": "Broker-Hostname",
+          "port": "TLS-Port",
+          "username": "MQTT-Benutzername",
+          "password": "MQTT-Passwort"
         }
       },
       "entities": {
@@ -25,10 +23,13 @@
         }
       },
       "reauth_confirm": {
-        "title": "Neuer API-Schlüssel",
-        "description": "powermesh.de ({url}) hat den gespeicherten API-Schlüssel abgelehnt. Erstelle einen neuen Schlüssel und trage ihn hier ein.",
+        "title": "Neuer MQTT-Zugang",
+        "description": "Trage deinen neuen persönlichen Zugang ein. Gepufferte Messwerte werden nicht automatisch einem neuen Zugang zugeordnet.",
         "data": {
-          "api_key": "API-Schlüssel"
+          "host": "Broker-Hostname",
+          "port": "TLS-Port",
+          "username": "MQTT-Benutzername",
+          "password": "MQTT-Passwort"
         }
       },
       "smoothing": {
@@ -37,7 +38,8 @@
       }
     },
     "error": {
-      "invalid_auth": "API-Schlüssel abgelehnt.",
+      "invalid_auth": "MQTT-Zugang abgelehnt.",
+      "invalid_connection": "Bitte Hostname, gültigen TLS-Port und vollständige persönliche MQTT-Zugangsdaten eintragen.",
       "invalid_key_format": "Kein powermesh.de-API-Schlüssel (bte_…).",
       "consent_required": "Auf powermesh.de fehlt die Einwilligung zur Übertragung oder der Schlüssel hat keine Schreibberechtigung.",
       "rate_limited": "Zu viele Anfragen. Bitte in einer Minute erneut versuchen.",
@@ -52,7 +54,7 @@
     },
     "abort": {
       "already_configured": "Dieser Server ist bereits eingerichtet.",
-      "reauth_successful": "API-Schlüssel aktualisiert."
+      "reauth_successful": "MQTT-Zugang aktualisiert."
     }
   },
   "options": {
@@ -105,9 +107,13 @@
     }
   },
   "issues": {
+    "buffer_generation_changed": {
+      "title": "Powermesh Energie: Ausstehende Messwerte prüfen",
+      "description": "Gepufferte Messwerte passen nicht zum aktuellen Zugang oder wurden abgelehnt. Sie wurden nicht verworfen. Prüfe den Status und sichere bei Bedarf lokale Daten, bevor du den Eintrag ausdrücklich entfernst und neu einrichtest. Beim Entfernen wird sein lokaler Puffer gelöscht."
+    },
     "consent_required": {
       "title": "powermesh.de: Einwilligung erforderlich",
-      "description": "powermesh.de speichert keine Messwerte. Erteile unter {url} (Mein Bereich → Energie-API) die Einwilligung zur Übertragung und prüfe die Berechtigungen des Schlüssels. Messwerte werden bis dahin lokal gepuffert; lade die Integration danach neu."
+      "description": "powermesh.de speichert keine Messwerte. Prüfe unter {url} die Einwilligung und deinen persönlichen MQTT-Zugang. Ausstehende Messwerte bleiben lokal; lade die Integration nach der Klärung neu."
     },
     "update_required": {
       "title": "Powermesh Energie: Update erforderlich",
