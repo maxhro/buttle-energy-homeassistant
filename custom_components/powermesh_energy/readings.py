@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 ENTITY_ID_PATTERN = re.compile(r"^sensor\.[a-z0-9_]{1,200}$")
-API_KEY_PATTERN = re.compile(r"^bte_([a-f0-9]{16})_[a-f0-9]{64}$")
+API_KEY_PATTERN = re.compile(r"^pme_([a-f0-9]{16})_[a-f0-9]{64}$")
 MAX_ABS_VALUE = 1e12
 
 # Supported combinations per device class.
@@ -39,7 +39,9 @@ _EXCLUDED_SOURCE_TYPES = frozenset({"water"})
 
 def key_public_id(api_key: str) -> str | None:
     """Return the public part of a powermesh.de API key, or None if malformed."""
-    match = API_KEY_PATTERN.match(api_key.strip())
+    if not isinstance(api_key, str):
+        return None
+    match = API_KEY_PATTERN.fullmatch(api_key.strip())
     return match.group(1) if match else None
 
 
@@ -120,9 +122,12 @@ def build_reading(
     state: str,
     attributes: Mapping[str, Any],
     timestamp: datetime,
+    context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Build a reading from a state, or None if it cannot be sent."""
-    if incompatibility(entity_id, attributes) is not None:
+    if not ENTITY_ID_PATTERN.fullmatch(entity_id):
+        return None
+    if isinstance(state, bool):
         return None
     try:
         value = float(state)
@@ -130,20 +135,148 @@ def build_reading(
         return None
     if not math.isfinite(value) or abs(value) > MAX_ABS_VALUE:
         return None
-    if timestamp.tzinfo is None:
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
         return None
     if value.is_integer() and abs(value) < 2**53:
         number: int | float = int(value)
     else:
         number = value
-    return {
+    raw_unit = attributes.get("unit_of_measurement")
+    unit = "" if raw_unit is None else raw_unit
+    if (
+        not isinstance(unit, str)
+        or len(unit) > 64
+        or unit.casefold() in {"unknown", "unavailable", "none"}
+    ):
+        return None
+    reading: dict[str, Any] = {
         "entity_id": entity_id,
         "timestamp": timestamp_key(timestamp),
-        "value": number,
-        "unit": attributes["unit_of_measurement"],
-        "device_class": attributes["device_class"],
-        "state_class": attributes["state_class"],
+        "state": number,
+        "unit_of_measurement": unit,
     }
+    allowed_limits = {"friendly_name": 255, "device_class": 64, "state_class": 64}
+    safe_attributes = {
+        name: value
+        for name, limit in allowed_limits.items()
+        if isinstance((value := attributes.get(name)), str)
+        and 0 < len(value) <= limit
+        and value.casefold() not in {"unknown", "unavailable", "none"}
+    }
+    if safe_attributes:
+        reading["attributes"] = safe_attributes
+    if isinstance(context, Mapping):
+        safe_context: dict[str, Any] = {}
+        for name, limit in (("area", 255), ("floor", 255), ("device_id", 128)):
+            value = context.get(name)
+            if (
+                isinstance(value, str)
+                and 0 < len(value) <= limit
+                and value.strip() == value
+                and value.casefold() not in {"unknown", "unavailable", "none"}
+            ):
+                safe_context[name] = value
+        labels = context.get("labels")
+        if isinstance(labels, (list, tuple)):
+            safe_labels: list[str] = []
+            for label in labels:
+                if (
+                    isinstance(label, str)
+                    and 0 < len(label) <= 255
+                    and label.strip() == label
+                    and label.casefold() not in {"unknown", "unavailable", "none"}
+                    and label not in safe_labels
+                ):
+                    safe_labels.append(label)
+                if len(safe_labels) == 20:
+                    break
+            if safe_labels:
+                safe_context["labels"] = safe_labels
+        if safe_context:
+            reading["context"] = safe_context
+    return reading
+
+
+def is_api_reading(reading: Any) -> bool:
+    """Check the new REST reading schema before restoring any persisted data."""
+    if not isinstance(reading, Mapping):
+        return False
+    required = {"entity_id", "timestamp", "state", "unit_of_measurement"}
+    if not required.issubset(reading):
+        return False
+    entity_id = reading.get("entity_id")
+    if not isinstance(entity_id, str) or not ENTITY_ID_PATTERN.fullmatch(entity_id):
+        return False
+    if not isinstance(reading.get("timestamp"), str):
+        return False
+    try:
+        timestamp = datetime.fromisoformat(reading["timestamp"].replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        return False
+    if isinstance(reading["state"], bool):
+        return False
+    try:
+        raw_state = reading["state"]
+        if isinstance(raw_state, bool) or not isinstance(raw_state, (int, float)):
+            return False
+        state = float(raw_state)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not math.isfinite(state) or abs(state) > MAX_ABS_VALUE:
+        return False
+    if (
+        not isinstance(reading.get("unit_of_measurement"), str)
+        or len(reading["unit_of_measurement"]) > 64
+        or reading["unit_of_measurement"].casefold() in {"unknown", "unavailable", "none"}
+    ):
+        return False
+    allowed = required | {"attributes", "context", "smoothing", "smoothing_window"}
+    if set(reading) - allowed:
+        return False
+    if "attributes" in reading:
+        attrs = reading["attributes"]
+        if not isinstance(attrs, Mapping) or set(attrs) - {"friendly_name", "device_class", "state_class"}:
+            return False
+        if any(
+            not isinstance(value, str)
+            or not value
+            or len(value) > (255 if key == "friendly_name" else 64)
+            or value.casefold() in {"unknown", "unavailable", "none"}
+            for key, value in attrs.items()
+        ):
+            return False
+    if "context" in reading:
+        ctx = reading["context"]
+        if not isinstance(ctx, Mapping) or set(ctx) - {"area", "floor", "labels", "device_id"}:
+            return False
+        bounds = {"area": 255, "floor": 255, "device_id": 128}
+        if any(
+            not isinstance(value, str) or not value or len(value) > bounds[key]
+            or value.casefold() in {"unknown", "unavailable", "none"}
+            for key, value in ctx.items()
+            if key in bounds
+        ):
+            return False
+        labels = ctx.get("labels", [])
+        if (
+            not isinstance(labels, list)
+            or len(labels) > 20
+            or any(not isinstance(label, str) or not label or len(label) > 255 for label in labels)
+            or len(set(labels)) != len(labels)
+            or any(label.casefold() in {"unknown", "unavailable", "none"} for label in labels)
+        ):
+            return False
+    if "smoothing" in reading and reading["smoothing"] not in {
+        "none", "time_simple_moving_average", "time_throttle"
+    }:
+        return False
+    if "smoothing_window" in reading and (
+        type(reading["smoothing_window"]) is not int or not 1 <= reading["smoothing_window"] <= 86400
+    ):
+        return False
+    return True
 
 
 def timestamp_key(timestamp: datetime) -> str:
@@ -170,12 +303,7 @@ def compatibility(
     server = server if isinstance(server, Mapping) else {}
     release = parse_version(server.get("api_release"))
     own = parse_version(client_version)
-    if (
-        server.get("api_version") != api_major
-        or release is None
-        or release[0] != api_major
-        or release < (parse_version(min_api_release) or (api_major, 0, 0))
-    ):
+    if server.get("api_version") != api_major or release is None or release < (parse_version(min_api_release) or (0, 0, 0)):
         return "api_incompatible", None
     client = server.get("client") if isinstance(server.get("client"), Mapping) else {}
     minimum = parse_version(client.get("minimum"))

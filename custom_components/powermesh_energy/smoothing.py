@@ -91,9 +91,11 @@ class Smoother:
         if self._last_value is not None and t < self._last_time:
             return []
         out = self.flush(when)
-        value = float(reading["value"])
+        value = float(reading["state"])
+        attributes = reading.get("attributes", {})
         resets = (
-            reading.get("state_class") == "total_increasing"
+            isinstance(attributes, Mapping)
+            and attributes.get("state_class") == "total_increasing"
             and self._samples > 0
             and self._last_value is not None
             and value < self._last_value
@@ -145,7 +147,7 @@ class Smoother:
             duration = end - self._covered_from
             mean = weighted / duration if duration > 0 else self._last_value
             start = datetime.fromtimestamp(self._start, UTC)
-            out.append(self._tag(self._template | {"timestamp": timestamp_key(start), "value": _number(mean)}))
+            out.append(self._tag(self._template | {"timestamp": timestamp_key(start), "state": _number(mean)}))
         self._start = self._end = None
         self._samples = 0
         self._weighted = 0.0

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.const import CONF_API_KEY, CONF_USERNAME, CONF_PASSWORD
+from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 
 from . import PowermeshConfigEntry
@@ -18,7 +18,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Powerme
     uploader = entry.runtime_data
     suggestion, skipped = await async_suggestion(hass)
     return {
-        "entry": async_redact_data(dict(entry.data), {CONF_API_KEY, CONF_USERNAME, CONF_PASSWORD}),
+        "entry": async_redact_data(dict(entry.data), {CONF_API_KEY}),
         "options": dict(entry.options),
         "integration_version": VERSION,
         "latest_integration_version": uploader.latest_version,

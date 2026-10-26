@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 import logging
 import random
 from typing import Any
-from uuid import uuid4
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
@@ -28,11 +27,11 @@ from .api import (
     PowermeshOutdatedError,
     PowermeshRateLimitError,
     PowermeshRejectedError,
-    HEX_ID,
     encode_request,
+    validate_status,
 )
 from .const import (
-    MQTT_CONTRACT,
+    API_MAJOR,
     CONF_ENTITIES,
     CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
@@ -52,11 +51,13 @@ from .const import (
     STATUS_RATE_LIMITED,
     STATUS_REJECTED,
     STATUS_UPDATE_REQUIRED,
+    REST_BUFFER_FORMAT,
     STORAGE_VERSION,
     UPLOAD_INTERVAL,
     VERSION,
 )
-from .readings import build_reading
+from .metadata import entity_friendly_name, entity_metadata
+from .readings import build_reading, compatibility, is_api_reading
 from .smoothing import Smoother, option_for
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,8 +95,9 @@ class PowermeshUploader:
         self._listeners: list[Callable[[], None]] = []
         self._retry_at: datetime | None = None
         self._paused = False
+        self._legacy_buffer: dict[str, Any] | None = None
+        self._blocked_buffer_count = 0
         self._uploading = False
-        self._generation: str | None = None
         self._buffer_owner: str | None = None
         self._inflight: dict[str, Any] | None = None
         self._stopping = False
@@ -105,7 +107,11 @@ class PowermeshUploader:
     @property
     def pending(self) -> int:
         """Number of readings waiting for upload."""
-        return len(self._buffer) + len(self._inflight["readings"] if self._inflight else [])
+        return (
+            len(self._buffer)
+            + len(self._inflight["readings"] if self._inflight else [])
+            + self._blocked_buffer_count
+        )
 
     @property
     def interval_name(self) -> str:
@@ -121,24 +127,47 @@ class PowermeshUploader:
     async def async_start(self) -> None:
         """Restore the buffer, record current values and start listening."""
         stored = await self._store.async_load()
-        self._generation = (stored or {}).get("generation")
-        self._buffer_owner = (stored or {}).get("owner")
-        self._inflight = (stored or {}).get("inflight")
-        if self._inflight is not None and (
-            not isinstance(self._inflight, dict)
-            or self._inflight.get("contract") != MQTT_CONTRACT
-            or self._inflight.get("operation") != "readings"
-            or not isinstance(self._inflight.get("id"), str)
-            or HEX_ID.fullmatch(self._inflight["id"]) is None
-            or not isinstance(self._inflight.get("readings"), list)
-            or not 1 <= len(self._inflight["readings"]) <= MAX_READINGS_PER_REQUEST
-            or self._inflight.get("generation") != self._generation
-        ):
-            self._block(STATUS_REJECTED, "invalid_local_buffer")
-            raise ValueError("Invalid persisted MQTT batch; local buffer was not discarded")
-        for reading in (stored or {}).get("readings", []):
-            if isinstance(reading, dict) and reading.get("entity_id") in self.entities:
-                self._append(reading)
+        if stored:
+            readings = stored.get("readings", [])
+            inflight = stored.get("inflight")
+            all_readings = list(readings) if isinstance(readings, list) else []
+            if isinstance(inflight, dict):
+                inflight_readings = inflight.get("readings")
+                if isinstance(inflight_readings, list):
+                    all_readings.extend(inflight_readings)
+                elif inflight:
+                    all_readings.append(inflight)
+            elif inflight is not None:
+                all_readings.append(inflight)
+            incompatible = (
+                (stored.get("transport") != REST_BUFFER_FORMAT and bool(all_readings))
+                or any(not is_api_reading(reading) for reading in all_readings)
+            )
+            if incompatible:
+                self._legacy_buffer = deepcopy(stored)
+                self._blocked_buffer_count = len(all_readings)
+                self._block(STATUS_REJECTED, "incompatible_local_buffer")
+                return
+            if not isinstance(readings, list):
+                self._legacy_buffer = deepcopy(stored)
+                self._blocked_buffer_count = len(all_readings)
+                self._block(STATUS_REJECTED, "invalid_local_buffer")
+                return
+            self._buffer_owner = stored.get("owner")
+            self._inflight = inflight
+            if self._inflight is not None and (
+                not isinstance(self._inflight, dict)
+                or not isinstance(self._inflight.get("readings"), list)
+                or not 1 <= len(self._inflight["readings"]) <= MAX_READINGS_PER_REQUEST
+                or not all(is_api_reading(item) for item in self._inflight["readings"])
+            ):
+                self._legacy_buffer = deepcopy(stored)
+                self._blocked_buffer_count = len(all_readings)
+                self._block(STATUS_REJECTED, "invalid_local_buffer")
+                return
+            for reading in readings:
+                if reading.get("entity_id") in self.entities:
+                    self._append(reading)
         await self.async_check_version()
         if self._paused:
             return
@@ -188,27 +217,31 @@ class PowermeshUploader:
         except PowermeshError as err:
             self._set_error(STATUS_OFFLINE, err.code)
             return False
-        self.server_release = server.get("api_release") if isinstance(server.get("api_release"), str) else None
-        generation = server["generation"]
-        if self.pending and (
-            self._generation != generation or self._buffer_owner != self.client.username
-        ):
-            self._block(STATUS_REJECTED, "buffer_generation_changed")
+        try:
+            validate_status(server)
+        except PowermeshOutdatedError as err:
+            self._block(STATUS_API_INCOMPATIBLE, err.code)
             return False
-        first_generation = self._generation is None
-        self._generation = generation
-        self._buffer_owner = self.client.username
-        self.latest_version = server["client"]["latest"] if server["client"]["latest"] != VERSION else None
+        self.server_release = server.get("api_release") if isinstance(server.get("api_release"), str) else None
+        problem, latest = compatibility(server, VERSION, API_MAJOR, MIN_API_RELEASE)
+        if problem is not None:
+            self._block(
+                STATUS_UPDATE_REQUIRED if problem == "update_required" else STATUS_API_INCOMPATIBLE,
+                problem,
+            )
+            return False
+        if self.pending and self._buffer_owner not in (None, self.client.key_id):
+            self._block(STATUS_REJECTED, "buffer_owner_changed")
+            return False
+        first_buffer = not self.pending
+        self._buffer_owner = self.client.key_id
+        self.latest_version = latest if latest != VERSION else None
         await self._store.async_save(self._data())
-        if first_generation:
+        if first_buffer:
             for entity_id in self.entities:
                 if (state := self.hass.states.get(entity_id)) is not None:
                     self._record(entity_id, state.state, state.attributes, state.last_updated)
-        latest = self.latest_version
-        if server["api_release"] != MIN_API_RELEASE:
-            self._block(STATUS_API_INCOMPATIBLE, "api_incompatible")
-            return False
-        for issue in ("update_required", "api_incompatible"):
+        for issue in ("update_required", "api_incompatible", "buffer_incompatible", "buffer_owner_changed", "invalid_local_buffer"):
             ir.async_delete_issue(self.hass, DOMAIN, f"{issue}_{self.entry.entry_id}")
         if latest is not None:
             ir.async_create_issue(
@@ -228,10 +261,14 @@ class PowermeshUploader:
     def _block(self, status: str, code: str) -> None:
         self._paused = True
         self._set_error(status, code)
-        issue = (
-            "buffer_generation_changed" if status == STATUS_REJECTED
-            else "update_required" if status == STATUS_UPDATE_REQUIRED else "api_incompatible"
-        )
+        if status == STATUS_REJECTED:
+            issue = (
+                "buffer_incompatible" if code == "incompatible_local_buffer"
+                else "buffer_owner_changed" if code == "buffer_owner_changed"
+                else "invalid_local_buffer"
+            )
+        else:
+            issue = "update_required" if status == STATUS_UPDATE_REQUIRED else "api_incompatible"
         ir.async_create_issue(
             self.hass,
             DOMAIN,
@@ -260,8 +297,9 @@ class PowermeshUploader:
                 pass
         while self._unsubscribers:
             self._unsubscribers.pop()()
-        self._drain()
-        await self._store.async_save(self._data())
+        if self._legacy_buffer is None:
+            self._drain()
+            await self._store.async_save(self._data())
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:
@@ -276,8 +314,10 @@ class PowermeshUploader:
 
     def _data(self) -> dict[str, Any]:
         return deepcopy({
-            "readings": self._buffer, "generation": self._generation,
-            "owner": self._buffer_owner, "inflight": self._inflight,
+            "transport": REST_BUFFER_FORMAT,
+            "readings": self._buffer,
+            "owner": self._buffer_owner,
+            "inflight": self._inflight,
         })
 
     @callback
@@ -301,9 +341,19 @@ class PowermeshUploader:
 
     @callback
     def _record(self, entity_id: str, state: str, attributes: Any, when: datetime) -> None:
-        reading = build_reading(entity_id, state, attributes, when)
+        safe_attributes = dict(attributes)
+        friendly_name = safe_attributes.get("friendly_name")
+        if (
+            not isinstance(friendly_name, str)
+            or not friendly_name
+            or friendly_name.casefold() in {"unknown", "unavailable", "none"}
+        ):
+            safe_attributes["friendly_name"] = entity_friendly_name(self.hass, entity_id)
+        reading = build_reading(
+            entity_id, state, safe_attributes, when, entity_metadata(self.hass, entity_id)
+        )
         smoother = self._smoothers.get(entity_id)
-        if reading is None or smoother is None or self._generation is None or self._paused:
+        if reading is None or smoother is None or self._buffer_owner is None or self._paused:
             return
         self._enqueue(smoother.add(reading, when))
 
@@ -352,7 +402,7 @@ class PowermeshUploader:
         if self._retry_at is not None and dt_util.utcnow() < self._retry_at:
             return
         if not self.pending:
-            if self._generation is None:
+            if self._buffer_owner is None:
                 await self.async_check_version()
             if not self.pending and self.status == STATUS_PENDING:
                 self.status = STATUS_OK
@@ -375,10 +425,7 @@ class PowermeshUploader:
         while self.pending and not self._stopping:
             if self._inflight is None:
                 batch = deepcopy(self._buffer[:MAX_READINGS_PER_REQUEST])
-                request = {
-                    "contract": MQTT_CONTRACT, "id": uuid4().hex,
-                    "operation": "readings", "generation": self._generation, "readings": batch,
-                }
+                request = {"readings": batch}
                 while True:
                     try:
                         encode_request(request)
@@ -389,12 +436,12 @@ class PowermeshUploader:
                             return
                         batch = batch[:len(batch) // 2]
                         request["readings"] = batch
-                self._inflight = request
+                self._inflight = {"readings": batch}
                 self._replace_buffer(self._buffer[len(batch):])
             batch = self._inflight["readings"]
             await self._store.async_save(self._data())
             try:
-                result = await self.client.upload(self._inflight)
+                result = await self.client.upload(batch)
             except PowermeshConnectionError as err:
                 self._retry_at = dt_util.utcnow() + timedelta(seconds=30 + random.uniform(0, 10))
                 self._set_error(STATUS_OFFLINE, err.code)
