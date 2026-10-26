@@ -8,11 +8,12 @@ from typing import Final
 DOMAIN: Final = "powermesh_energy"
 # Keep in sync with manifest.json.
 VERSION: Final = "0.1.0"
-MQTT_CONTRACT: Final = "0.1.0"
-MIN_API_RELEASE: Final = "0.1.0"
+API_RELEASE: Final = "0.1.0"
+API_MAJOR: Final = 2
+MIN_API_RELEASE: Final = API_RELEASE
 CLIENT_ID: Final = f"homeassistant/{VERSION}"
-DEFAULT_HOST: Final = ""
-DEFAULT_PORT: Final = 8883
+DEFAULT_URL: Final = "https://api.powermesh.de"
+CONF_API_KEY: Final = "api_key"
 MAX_BODY_BYTES: Final = 131072
 
 CONF_ENTITIES: Final = "entities"
@@ -54,6 +55,7 @@ MAX_READINGS_PER_REQUEST: Final = 200
 MAX_BUFFERED_READINGS: Final = 20_000
 STORAGE_VERSION: Final = 1
 REQUEST_TIMEOUT_SECONDS: Final = 30
+REST_BUFFER_FORMAT: Final = "rest-v2"
 
 STATUS_OK: Final = "ok"
 STATUS_PENDING: Final = "pending"

@@ -13,6 +13,6 @@
   "integration_type": "service",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/maxhro/powermesh-energy-homeassistant/issues",
-  "requirements": ["aiomqtt==2.5.0"],
+  "requirements": [],
   "version": "0.1.0"
 }

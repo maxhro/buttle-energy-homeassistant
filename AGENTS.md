@@ -1,46 +1,44 @@
 # Powermesh Home Assistant Integration
 
-## Paused handoff — 2026-10-26
+## Current baseline
 
-- Implementation is paused at the user's request. Await the next explicit task;
-  do not deploy, publish releases or modify Home Assistant installations on your own.
-- Fresh-install prototype version is 0.1.0. Keep manifest.json and const.py versions
-  aligned. Website, service and integration version lifecycles remain independent.
-  Never overwrite existing Git tags/releases or silently downgrade HACS installs.
-- MQTT integration, setup/options, bounded persistent offline buffering, diagnostics,
-  translations and PowerShell 7 manual-install package builder are prepared.
-  The package does not install remotely, remove entries or delete existing buffers.
-- Local Python tests: 50 passed, one opt-in live test skipped. Both package tests
-  passed; the private workspace's required compatibility gate passed. Live-service,
-  Windows and actual Home Assistant installation acceptance remain open.
-- PR CI requires aiomqtt 2.5.0 to satisfy current Home Assistant constraints;
-  keep the manifest and test dependency pins aligned, never restore 2.4.0.
-- A verified ZIP exists locally in ignored dist. Never commit archives, .env,
-  credentials, caches, virtual environments or test runtime data.
-- Public documentation must not describe private interface topics, envelopes,
-  headers, payloads, error codes or protocol examples. Consult the private service
-  repository for the contract; keep handoff/release notes free of those details.
+- Version `0.1.0`: selected numeric sensor readings, optional allowlisted Home
+  Assistant metadata, smoothing and bounded offline buffering for powermesh.de.
+  Smart-home comparison and improvement potential are **in Entwicklung**,
+  not implemented. Do not add analysis, exports, control or data sharing.
+- Keep `manifest.json` and `const.py` versions aligned. Website, service and
+  integration have independent version lifecycles. Interface documentation
+  belongs in the private website/service repositories.
+- Public documentation covers setup, sensor selection, status and privacy,
+  never endpoints, headers, payload formats or error codes. State that
+  powermesh.de terms apply. Do not publish credentials, archives, caches,
+  virtual environments or test runtime data.
+- Data is pseudonymous, not anonymous. Registration is not consent to sell or
+  share household data. Retain explicit sensor selection, HTTPS/TLS, bounded
+  buffering, confirmed-storage removal and visible loss/error reporting.
+  Pending values must not be silently reassigned on a credential change.
+  Do not reinterpret incompatible stored data or delete user data automatically.
+- The current implementation is the project baseline. Describe current behavior
+  and constraints, not implementation history or earlier project states.
 
-## Next steps, only after approval
+## Checks
 
-- The backend still needs a suitable persistent operating environment; current
-  PHP webhosting alone is insufficient. Do not imply a usable production service.
-- Coordinate private backend readiness, guarded synthetic real-service testing,
-  Windows package tests and a controlled manual fresh installation in Home Assistant.
-- Verify consent/access setup, sensor selection, buffering, reconnect/deletion
-  behavior and diagnostics without real household data or production probing.
-- Deliberately handle old entries/buffers with the operator; never migrate or delete
-  them automatically. Publish a release only after explicit authorization and checks.
-
-## Checks and boundaries
-
-- Use the existing isolated test environment: `pytest -q` and
-  `python -m compileall -q custom_components`. Tests use synthetic data and mocked
-  network boundaries. Live tests require explicit isolated-loopback opt-in.
+- Isolated Python environment: `pytest -q` and
+  `python -m compileall -q custom_components`. Use synthetic data and mocked
+  transport; never probe production or send real household data.
 - Package checks: `node --test tests/package.test.mjs`.
-- PowerShell 7: `pwsh -NoProfile -File ./build-package.ps1 -DryRun`, then
-  `-BuildPackage` for a local manual-install ZIP; existing outputs are not overwritten.
-- Preserve user changes, secure TLS, honest storage confirmations and visible buffer
-  loss/error reporting. Do not add analysis, exports, device control or data sharing.
-- Comparison and improvement potential remain in development. Data is pseudonymous,
-  not anonymous; registration is not consent to sell household data.
+- PowerShell 7: `pwsh -NoProfile -File ./build-package.ps1 -DryRun`;
+  `-BuildPackage` creates a local manual-install ZIP without overwriting output.
+  Packaging never publishes a release or connects to Home Assistant.
+- HACS and hassfest jobs in `.github/workflows/validate.yml` are required before
+  merge/release. A skipped or unavailable validator is not proof of acceptance.
+  Keep private cross-project compatibility checks aligned.
+
+## Operations
+
+- Deployment, releases, pushes and live Home Assistant installation require
+  separate authorization. A working service and matching website-issued key
+  are prerequisites for installation acceptance, not assumptions.
+- Controlled acceptance covers consent/access, sensor selection, smoothing,
+  buffering, reconnect, deletion and diagnostics using synthetic data.
+  Preserve user changes; stop owned test helpers and clean temporary files.

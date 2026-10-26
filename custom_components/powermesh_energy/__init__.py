@@ -1,13 +1,15 @@
-"""Powermesh Energie: send Home Assistant energy readings to powermesh.de."""
+"""Powermesh Energie: send selected Home Assistant sensor readings to powermesh.de."""
 
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD, Platform
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import PowermeshClient
+from .const import CONF_API_KEY
 from .uploader import PowermeshUploader
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
@@ -17,11 +19,13 @@ type PowermeshConfigEntry = ConfigEntry[PowermeshUploader]
 
 async def async_setup_entry(hass: HomeAssistant, entry: PowermeshConfigEntry) -> bool:
     """Start collecting and uploading readings for one powermesh.de account."""
-    if not all(field in entry.data for field in (CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)):
-        raise ConfigEntryError("HTTP prototype entries cannot be upgraded. Back up pending data before explicitly removing and recreating this entry for MQTT.")
-    client = PowermeshClient(
-        entry.data[CONF_HOST], entry.data[CONF_PORT], entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
-    )
+    api_key = entry.data.get(CONF_API_KEY)
+    if not isinstance(api_key, str):
+        raise ConfigEntryError(
+            "This older integration entry uses an incompatible connection format. "
+            "Keep any pending local readings safe before replacing the entry."
+        )
+    client = PowermeshClient(async_get_clientsession(hass), api_key)
     uploader = PowermeshUploader(hass, entry, client)
     entry.runtime_data = uploader
     await uploader.async_start()

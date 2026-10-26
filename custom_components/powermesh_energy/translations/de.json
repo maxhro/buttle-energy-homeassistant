@@ -2,18 +2,15 @@
   "config": {
     "step": {
       "user": {
-        "title": "powermesh.de verbinden",
-        "description": "Erteile auf powermesh.de die Einwilligung und erstelle einen persönlichen MQTT-Zugang. Trage die dort angezeigten Broker-Einstellungen ein. Deine bestehende lokale MQTT-Einrichtung bleibt unverändert.",
+        "title": "Mit powermesh.de verbinden",
+        "description": "Erteile auf powermesh.de die Einwilligung und trage deinen persönlichen API-Schlüssel ein. Übertragen werden nur ausgewählte Sensorwerte; verfügbare Namen sowie zugewiesene Bereiche, Etagen und Labels können als optionaler Kontext mitgesendet werden.",
         "data": {
-          "host": "Broker-Hostname",
-          "port": "TLS-Port",
-          "username": "MQTT-Benutzername",
-          "password": "MQTT-Passwort"
+          "api_key": "Persönlicher API-Schlüssel"
         }
       },
       "entities": {
         "title": "Entitäten auswählen",
-        "description": "Vorschlag aus deinem Energie-Dashboard:\n{suggestion}\n\nNicht vorgeschlagen:\n{skipped}\n\nDu kannst Energie- (Wh/kWh/MWh) und Leistungssensoren (W/kW) ergänzen oder entfernen. {invalid}",
+        "description": "Vorschlag aus deinem Energie-Dashboard:\n{suggestion}\n\nNicht vorgeschlagen:\n{skipped}\n\nDu kannst beliebige numerische Sensoren auswählen, auch Temperatursensoren. {invalid}",
         "data": {
           "entities": "Zu übertragende Entitäten",
           "upload_interval": "Übertragungsintervall"
@@ -23,13 +20,10 @@
         }
       },
       "reauth_confirm": {
-        "title": "Neuer MQTT-Zugang",
+        "title": "API-Schlüssel ersetzen",
         "description": "Trage deinen neuen persönlichen Zugang ein. Gepufferte Messwerte werden nicht automatisch einem neuen Zugang zugeordnet.",
         "data": {
-          "host": "Broker-Hostname",
-          "port": "TLS-Port",
-          "username": "MQTT-Benutzername",
-          "password": "MQTT-Passwort"
+          "api_key": "Persönlicher API-Schlüssel"
         }
       },
       "smoothing": {
@@ -38,23 +32,19 @@
       }
     },
     "error": {
-      "invalid_auth": "MQTT-Zugang abgelehnt.",
-      "invalid_connection": "Bitte Hostname, gültigen TLS-Port und vollständige persönliche MQTT-Zugangsdaten eintragen.",
-      "invalid_key_format": "Kein powermesh.de-API-Schlüssel (bte_…).",
+      "invalid_auth": "Der API-Schlüssel wurde abgelehnt. Prüfe ihn in deinem powermesh.de-Konto.",
       "consent_required": "Auf powermesh.de fehlt die Einwilligung zur Übertragung oder der Schlüssel hat keine Schreibberechtigung.",
       "rate_limited": "Zu viele Anfragen. Bitte in einer Minute erneut versuchen.",
       "cannot_connect": "Keine Verbindung zum Server.",
-      "https_required": "HTTPS ist erforderlich.",
-      "invalid_url": "Ungültige Adresse (Serveradresse ohne Pfad).",
       "unknown": "Unerwarteter Fehler.",
       "no_entities": "Bitte mindestens eine Entität auswählen.",
-      "incompatible": "Nicht unterstützt (Einheit, Geräte- oder Zustandsklasse): {invalid}",
+      "incompatible": "Wähle nur Sensor-Entitäten aus: {invalid}",
       "api_incompatible": "Die Serverversion passt nicht zu dieser Version der Integration.",
       "update_required": "Bitte die Integration (HACS) aktualisieren, um diesen Server zu verbinden."
     },
     "abort": {
       "already_configured": "Dieser Server ist bereits eingerichtet.",
-      "reauth_successful": "MQTT-Zugang aktualisiert."
+      "reauth_successful": "API-Schlüssel aktualisiert."
     }
   },
   "options": {
@@ -79,7 +69,7 @@
     },
     "error": {
       "no_entities": "Bitte mindestens eine Entität auswählen.",
-      "incompatible": "Nicht unterstützt (Einheit, Geräte- oder Zustandsklasse): {invalid}"
+      "incompatible": "Wähle nur Sensor-Entitäten aus: {invalid}"
     }
   },
   "entity": {
@@ -107,13 +97,21 @@
     }
   },
   "issues": {
-    "buffer_generation_changed": {
+    "buffer_incompatible": {
       "title": "Powermesh Energie: Ausstehende Messwerte prüfen",
-      "description": "Gepufferte Messwerte passen nicht zum aktuellen Zugang oder wurden abgelehnt. Sie wurden nicht verworfen. Prüfe den Status und sichere bei Bedarf lokale Daten, bevor du den Eintrag ausdrücklich entfernst und neu einrichtest. Beim Entfernen wird sein lokaler Puffer gelöscht."
+      "description": "Ein lokal gespeicherter Stapel verwendet ein älteres, inkompatibles Format und wurde weder gesendet noch verändert. Sichere benötigte lokale Daten, bevor du den Eintrag entfernst und neu erstellst; dabei wird der lokale Puffer gelöscht."
+    },
+    "buffer_owner_changed": {
+      "title": "Powermesh Energie: Ausstehende Messwerte prüfen",
+      "description": "Gepufferte Messwerte gehören zu einem anderen API-Schlüssel und wurden weder neu zugeordnet noch gesendet. Stelle den ursprünglichen Schlüssel wieder her oder sichere den Puffer, bevor du den Eintrag entfernst und neu erstellst."
+    },
+    "invalid_local_buffer": {
+      "title": "Powermesh Energie: Lokaler Puffer benötigt Aufmerksamkeit",
+      "description": "Ein lokal gespeicherter Stapel konnte nicht geprüft werden und wurde nicht gesendet. Sichere die lokalen Daten, bevor du den Eintrag entfernst und neu erstellst."
     },
     "consent_required": {
       "title": "powermesh.de: Einwilligung erforderlich",
-      "description": "powermesh.de speichert keine Messwerte. Prüfe unter {url} die Einwilligung und deinen persönlichen MQTT-Zugang. Ausstehende Messwerte bleiben lokal; lade die Integration nach der Klärung neu."
+      "description": "powermesh.de speichert keine Messwerte. Prüfe unter {url} die Einwilligung und deinen API-Schlüssel. Ausstehende Messwerte bleiben lokal; lade die Integration nach der Klärung neu."
     },
     "update_required": {
       "title": "Powermesh Energie: Update erforderlich",

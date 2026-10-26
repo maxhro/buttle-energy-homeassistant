@@ -7,25 +7,23 @@ Verbindet Home Assistant mit [powermesh.de](https://powermesh.de).
 
 ## Wozu?
 
-Ziel von Powermesh ist nicht, deinen eigenen Verbrauch zu protokollieren – das kann
-Home Assistant selbst. Powermesh soll Smarthomes miteinander vergleichbar machen und
-daraus Verbesserungspotenziale ableiten: Wo liegt dein Haushalt im Vergleich zu
-ähnlichen Haushalten, und wo lohnt sich ein genauerer Blick?
-
-Dieser Vergleich befindet sich in Entwicklung; derzeit werden die Messwerte nur
-gespeichert. Vergleiche werden nur aus zusammengefassten Daten vieler Haushalte
-gebildet – andere Nutzer sehen nie deine Einzelwerte.
+Ein Vergleich von Smarthomes und die Ableitung von Verbesserungspotenzial befinden
+sich in Entwicklung und sind nicht implementiert. Derzeit speichert Powermesh
+ausschließlich die von dir freigegebenen Sensorwerte; es gibt keine Auswertung oder
+Anzeige der Messwerte.
 
 ## Deine Daten
 
-- Übertragen werden nur Sensor-Kennung, Zeitpunkt und Messwert mit Einheit der
-  von dir ausgewählten Energie- und Leistungssensoren – keine Namen, Adressen
-  oder Geräteinformationen.
-- Die Daten sind pseudonym deinem powermesh.de-Konto zugeordnet, werden
-  verschlüsselt übertragen, nicht verkauft und nicht an Dritte weitergegeben.
-- Übertragen wird nur nach deiner Einwilligung auf powermesh.de.
-- Du kannst alle Messwerte jederzeit selbst auf powermesh.de löschen oder die
-  Einwilligung widerrufen; dabei werden alle Messwerte gelöscht.
+Übertragen werden Sensor-Kennung, Zeitpunkt, Zahlenwert und Einheit. Zusätzlich
+können Home-Assistant-Metadaten wie Anzeigename, Geräte- und Zustandsklasse, Bereich,
+Etage, Labels und Gerätekennung gespeichert werden. Diese Angaben können Rückschlüsse
+auf deinen Haushalt ermöglichen.
+
+Die Messwerte und Metadaten werden pseudonym deinem Benutzerkonto zugeordnet und bis
+zum Ende der Aufbewahrungsfrist gespeichert. Sie werden nicht verkauft oder an Dritte
+weitergegeben. Du kannst deine Einwilligung jederzeit widerrufen; dann werden alle
+API-Schlüssel gesperrt und alle gespeicherten Messwerte einschließlich Metadaten
+gelöscht.
 
 ## Installation über HACS
 
@@ -39,54 +37,42 @@ Der Button öffnet das Repository direkt in deinem HACS. Alternativ von Hand:
 3. „Powermesh Energie“ herunterladen und Home Assistant neu starten
 4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Powermesh Energie**
 
-Voraussetzung für diesen neu gestarteten Prototyp: Home Assistant 2026.10.4
+Voraussetzung: Home Assistant 2026.10.4
 (getesteter Stand) oder neuer und ein Konto auf powermesh.de.
 Das Integrations-Icon zeigt Home Assistant ab Version 2026.3 an.
 
 ## Einrichtung
 
-1. Auf powermesh.de anmelden und unter **Mein Bereich → Home Assistant** die
-   Einwilligung erteilen und einen persönlichen MQTT-Zugang erstellen. Eine Anleitung
-   findest du nach der Anmeldung unter **Hilfe & Wissen → Home Assistant einrichten**.
-2. In Home Assistant die im Konto angezeigten Broker-Einstellungen und persönlichen
-   Zugangsdaten eintragen. Die Verbindung ist TLS-gesichert und unabhängig von
-   deinem bereits eingerichteten lokalen MQTT-Broker.
-   **Neustart als Prototyp 0.1.0:** Die bisherige HTTP-Integration wird nicht
-   automatisch migriert. Vor dem ausdrücklichen Entfernen alter Einträge lokale
-   Puffer bei Bedarf sichern; das Entfernen löscht sie. Anschließend 0.1.0 aus dem
-   freigegebenen Teststand manuell installieren und neu einrichten. HACS behandelt
-   0.1.0 nach 1.0.0 nicht als normales Update. Alte Releases werden nicht überschrieben.
-   Prüfe danach Automationen und Dashboards. Alte Zugänge sind nicht übertragbar.
-3. Die Integration schlägt anhand deines **Energie-Dashboards** passende Sensoren
-   vor (Netz, Solar, Batterie, Geräte). Du kannst die Auswahl anpassen und später
-   über **Konfigurieren** ändern oder auf den Vorschlag zurücksetzen.
+1. Auf powermesh.de anmelden, die Informationen zur Speicherung prüfen und die
+   Einwilligung erteilen. Für die Nutzung muss ein passender persönlicher API-Schlüssel
+   und ein verfügbarer Dienst bereitgestellt sein.
+2. In Home Assistant die Integration hinzufügen und den persönlichen API-Schlüssel
+   eintragen. Andere Home-Assistant-Integrationen und lokale Broker-Einstellungen
+   werden davon nicht geändert.
+3. Die Integration schlägt anhand deines **Energie-Dashboards** Sensoren vor. Das ist
+   nur eine Orientierung: Du kannst jeden numerischen Sensor auswählen, auch
+   Temperatur-Sensoren. Die Auswahl lässt sich später über **Konfigurieren** ändern
+   oder auf den Vorschlag zurücksetzen.
 4. Im nächsten Schritt legst du je Sensor eine **Glättung** fest – ähnlich dem
    Filter-Helfer von Home Assistant: zeitgewichteter Mittelwert oder Drosselung
    über 10 Sekunden bis 1 Stunde, oder keine Glättung. Standard ist ein
-   **1-Minuten-Mittelwert**; so wird höchstens ein Wert pro Minute und Sensor
-   übertragen. Die gewählte Glättung wird mit jedem Wert übermittelt.
+   **1-Minuten-Mittelwert**; dadurch entstehen weniger übertragene Werte.
 
 Die Integration sendet gesammelt in regelmäßigen Abständen und puffert bei
-Verbindungsproblemen lokal. Werte werden erst nach bestätigter Speicherung aus
-dem Puffer entfernt. Bei einem Zugangswechsel werden alte Puffer nicht stillschweigend
-neu zugeordnet. Der lokale Puffer ist begrenzt; bei Überlauf werden die ältesten
-noch nicht gesendeten Werte verworfen und der Verlust sichtbar gezählt/protokolliert.
-Eine Broker-Verbindung allein bestätigt noch keine Speicherung.
+Verbindungsproblemen lokal. Werte werden erst nach einer ausdrücklichen
+Speicherbestätigung aus dem Puffer entfernt. Bei einem Schlüsselwechsel werden
+ausstehende Werte nicht stillschweigend neu zugeordnet. Der lokale Puffer ist begrenzt; bei
+Überlauf werden die ältesten noch nicht gesendeten Werte verworfen und der Verlust
+sichtbar gezählt/protokolliert.
 Status, ausstehende Werte und letzte Übertragung
 siehst du an den Diagnose-Sensoren. Ist ein Update der Integration nötig,
 erscheint eine Reparaturmeldung in Home Assistant.
 
 ## Versionen
 
-Für die vollständige Neuinstallation starten Webanwendung, Schnittstelle und
-Integration gemeinsam bei **0.1.0**. Danach bleiben ihre Versionszyklen unabhängig.
-Bestehende Git-Tags und Releases werden nicht überschrieben. Alte Einträge und
-lokale Puffer werden von den Paket-Skripten weder migriert noch gelöscht.
-
-Die Integration wird unabhängig von der Webanwendung und der Schnittstelle von powermesh.de
-versioniert. Nur bei Änderungen der Schnittstellenfunktionen wird die API-Version erhöht.
-Bitte halte die Integration über HACS aktuell; veraltete Versionen werden vom Server
-abgelehnt, falls eine neuere Mindestversion vorausgesetzt wird.
+Diese Integration ist ein Entwicklungsstand in Version **0.1.0**. Sie wird
+unabhängig von der Website und dem Dienst versioniert. Vergleiche und Auswertungen
+sind nicht implementiert. Halte die Integration über HACS aktuell.
 
 ## Lokale Tests
 
@@ -111,9 +97,8 @@ Die PowerShell-Paketprüfung läuft mit `node --test tests/package.test.mjs`
 
 Mit einer separaten Python-Testumgebung: `pip install -r requirements_test.txt`,
 danach `pytest -q` und `python -m compileall -q custom_components`.
-Tests verwenden synthetische Daten und ersetzen den Netzwerktransport.
-Die optionale, ausdrücklich aktivierte lokale Integrationstest-Strecke ist
-im privaten Dienst-Repository beschrieben; sie kontaktiert keine Produktivsysteme.
+Tests verwenden synthetische Daten und ersetzen den Netzwerktransport; sie kontaktieren
+keine Produktivsysteme.
 
 ## Lizenz
 
@@ -125,11 +110,9 @@ einen persönlichen Zugang voraus.
 
 ---
 
-**English:** Prototype Home Assistant integration for powermesh.de, installable as a
-HACS custom repository. Powermesh aims to compare smart homes with each other (in
-aggregate) to identify improvement potential – this comparison is in development.
-Selected energy and power sensors (pre-selected from the Energy dashboard,
-adjustable, smoothed per sensor – default: 1-minute time-weighted mean) are
-transferred pseudonymously after consent on powermesh.de; users can
-delete their data at any time. Code: MIT. The powermesh.de interface and services are
-not covered by this license.
+**English:** Prototype Home Assistant integration for powermesh.de. Smart-home
+comparison and improvement analysis are in development and not implemented. The
+service currently stores only selected sensor readings. Readings and optional
+Home Assistant metadata are pseudonymously associated with the account; see the
+German privacy description above. Code: MIT. The service is not covered by this
+license.

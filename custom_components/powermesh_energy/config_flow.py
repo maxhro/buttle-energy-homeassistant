@@ -8,8 +8,8 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -32,40 +32,43 @@ from .api import (
     PowermeshOutdatedError,
     PowermeshRateLimitError,
     validate_connection,
+    validate_status,
 )
 from .const import (
+    CONF_API_KEY,
     CONF_ENTITIES,
     CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
     CONF_USE_SUGGESTION,
     DEFAULT_UPLOAD_INTERVAL,
-    DEFAULT_HOST,
-    DEFAULT_PORT,
     DOMAIN,
     INTERVAL_OPTIONS,
 )
 from .energy_dashboard import async_suggestion
-from .readings import incompatibility
+from .readings import ENTITY_ID_PATTERN
 from .smoothing import OPTIONS as SMOOTHING_OPTIONS, option_for
 
 REASONS_DE = {
     "external_statistic": "externe Statistik, keine Entität",
     "missing": "derzeit kein Zustand",
     "entity_id": "keine sensor-Entität",
-    "device_class": "Geräteklasse nicht energy/power",
+    "device_class": "Geräteklasse nicht Energie/Leistung",
     "unit": "Einheit nicht unterstützt",
     "state_class": "Zustandsklasse nicht unterstützt",
 }
 
 
-async def _async_validate(data: Mapping[str, Any]) -> dict[str, str]:
-    """Check credentials with a TLS MQTT application status exchange."""
+async def _async_validate(hass: HomeAssistant, data: Mapping[str, Any]) -> dict[str, str]:
+    """Verify the personal API key over HTTPS."""
     try:
-        validate_connection(data[CONF_HOST], data[CONF_PORT], data[CONF_USERNAME], data[CONF_PASSWORD])
+        validate_connection(data[CONF_API_KEY])
     except (ValueError, KeyError):
-        return {"base": "invalid_connection"}
+        return {"base": "invalid_auth"}
     try:
-        await PowermeshClient(data[CONF_HOST], data[CONF_PORT], data[CONF_USERNAME], data[CONF_PASSWORD]).status()
+        status = await PowermeshClient(
+            async_get_clientsession(hass), data[CONF_API_KEY].strip()
+        ).status()
+        validate_status(status)
     except PowermeshOutdatedError:
         return {"base": "api_incompatible"}
     except PowermeshAuthError:
@@ -83,10 +86,9 @@ async def _async_validate(data: Mapping[str, Any]) -> dict[str, str]:
 
 def _connection_schema(data: Mapping[str, Any]) -> vol.Schema:
     return vol.Schema({
-        vol.Required(CONF_HOST, default=data.get(CONF_HOST, DEFAULT_HOST)): str,
-        vol.Required(CONF_PORT, default=data.get(CONF_PORT, DEFAULT_PORT)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
-        vol.Required(CONF_USERNAME, default=data.get(CONF_USERNAME, "")): str,
-        vol.Required(CONF_PASSWORD): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+        vol.Required(CONF_API_KEY, default=data.get(CONF_API_KEY, "")): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
     })
 
 
@@ -96,7 +98,7 @@ def _entity_schema(default_entities: list[str], default_interval: str = DEFAULT_
     return vol.Schema(
         {
             vol.Optional(CONF_ENTITIES, default=default_entities): EntitySelector(
-                EntitySelectorConfig(domain="sensor", device_class=["energy", "power"], multiple=True)
+                EntitySelectorConfig(domain="sensor", multiple=True)
             ),
             vol.Optional(CONF_UPLOAD_INTERVAL, default=default_interval): SelectSelector(
                 SelectSelectorConfig(
@@ -136,7 +138,7 @@ def _incompatible(hass: HomeAssistant, entities: list[str]) -> list[str]:
     return [
         entity
         for entity in entities
-        if incompatibility(entity, (state.attributes if (state := hass.states.get(entity)) else None)) is not None
+        if not isinstance(entity, str) or not ENTITY_ID_PATTERN.fullmatch(entity)
     ]
 
 
@@ -150,14 +152,15 @@ class PowermeshConfigFlow(ConfigFlow, domain=DOMAIN):
         self._options: dict[str, Any] = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Ask for the separate TLS broker and personal credentials."""
+        """Ask for a personal API key."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = await _async_validate(user_input)
+            errors = await _async_validate(self.hass, user_input)
             if not errors:
-                await self.async_set_unique_id(f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_USERNAME]}")
+                api_key = user_input[CONF_API_KEY].strip()
+                await self.async_set_unique_id(api_key.split("_", 2)[1])
                 self._abort_if_unique_id_configured()
-                self._connection = {field: user_input[field] for field in (CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)}
+                self._connection = {CONF_API_KEY: api_key}
                 return await self.async_step_entities()
         return self.async_show_form(
             step_id="user",
@@ -217,12 +220,13 @@ class PowermeshConfigFlow(ConfigFlow, domain=DOMAIN):
         assert entry is not None
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = await _async_validate(user_input)
+            errors = await _async_validate(self.hass, user_input)
             if not errors:
-                connection = {field: user_input[field] for field in (CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)}
+                api_key = user_input[CONF_API_KEY].strip()
+                connection = {CONF_API_KEY: api_key}
                 return self.async_update_reload_and_abort(
                     entry, data=connection,
-                    unique_id=f"{connection[CONF_HOST]}:{connection[CONF_PORT]}/{connection[CONF_USERNAME]}",
+                    unique_id=api_key.split("_", 2)[1],
                 )
         return self.async_show_form(
             step_id="reauth_confirm",

@@ -42,10 +42,10 @@ PREFS = {
 
 
 def test_key_public_id() -> None:
-    key = "bte_" + "a" * 16 + "_" + "b" * 64
+    key = "pme_" + "a" * 16 + "_" + "b" * 64
     assert readings.key_public_id(key) == "a" * 16
     assert readings.key_public_id(key.upper()) is None
-    assert readings.key_public_id("bte_short") is None
+    assert readings.key_public_id("pme_short") is None
 
 
 def test_dashboard_statistic_ids_reads_current_and_legacy_format() -> None:
@@ -86,24 +86,59 @@ def test_incompatibility_reasons() -> None:
     assert readings.incompatibility("sensor.x", {**POWER, "unit_of_measurement": "kW"}) is None
 
 
-def test_build_reading_contains_only_six_fields() -> None:
+def test_build_reading_contains_only_allowlisted_fields() -> None:
     reading = readings.build_reading("sensor.grid_import", "12.0", {**ENERGY, "friendly_name": "Netz"}, WHEN)
     assert reading == {
         "entity_id": "sensor.grid_import",
         "timestamp": "2026-01-02T03:04:05Z",
-        "value": 12,
-        "unit": "kWh",
-        "device_class": "energy",
-        "state_class": "total_increasing",
+        "state": 12,
+        "unit_of_measurement": "kWh",
+        "attributes": {
+            "friendly_name": "Netz",
+            "device_class": "energy",
+            "state_class": "total_increasing",
+        },
     }
-    assert readings.build_reading("sensor.p", "-1.5", POWER, WHEN)["value"] == -1.5
+    assert readings.build_reading("sensor.temperature", "-1.5", {}, WHEN)["state"] == -1.5
+    unitless = readings.build_reading("sensor.unitless", "1", {}, WHEN)
+    assert unitless["unit_of_measurement"] == ""
+    assert "attributes" not in unitless
+
+
+def test_build_reading_metadata_is_bounded_and_allowlisted() -> None:
+    reading = readings.build_reading(
+        "sensor.power",
+        "1",
+        {**POWER, "friendly_name": "Power", "secret": "not sent"},
+        WHEN,
+        {
+            "area": "Kitchen",
+            "floor": "Ground",
+            "labels": ["energy", "energy", "room"],
+            "device_id": "d" * 32,
+            "unknown": "not sent",
+        },
+    )
+    assert reading["context"] == {
+        "area": "Kitchen",
+        "floor": "Ground",
+        "device_id": "d" * 32,
+        "labels": ["energy", "room"],
+    }
+    assert "secret" not in reading["attributes"]
+    assert "unknown" not in reading["context"]
+    assert readings.build_reading("sensor.power", "1", {"unit_of_measurement": "x" * 65}, WHEN) is None
+    assert readings.build_reading("sensor.power", "1", {"unit_of_measurement": 12}, WHEN) is None
+    assert "context" not in readings.build_reading(
+        "sensor.power", "1", {}, WHEN, {"area": "a" * 256}
+    )
 
 
 def test_build_reading_rejects_unusable_states() -> None:
     for state in ["unknown", "unavailable", "nan", "inf", "1e13", ""]:
         assert readings.build_reading("sensor.p", state, POWER, WHEN) is None
     assert readings.build_reading("sensor.p", "1", POWER, WHEN.replace(tzinfo=None)) is None
-    assert readings.build_reading("sensor.p", "1", {**POWER, "unit_of_measurement": "VA"}, WHEN) is None
+    assert readings.build_reading("sensor.p", "1", {"unit_of_measurement": "x" * 65}, WHEN) is None
 
 
 def test_timestamp_key_converts_to_utc_seconds() -> None:
@@ -124,7 +159,7 @@ def test_invalid_indices() -> None:
     assert readings.invalid_indices(None) == set()
 
 
-SERVER = {"api_version": 2, "api_release": "2.0.0", "client": {"minimum": "1.0.0", "latest": "1.0.0"}}
+SERVER = {"api_version": 2, "api_release": "0.1.0", "client": {"minimum": "0.1.0", "latest": "0.1.0"}}
 
 
 def test_parse_version() -> None:
@@ -136,11 +171,21 @@ def test_parse_version() -> None:
 
 def test_compatibility() -> None:
     check = readings.compatibility
-    assert check(SERVER, "1.0.0", 2, "2.0.0") == (None, None)
-    assert check(SERVER | {"api_release": "2.1.0"}, "1.0.0", 2, "2.0.0") == (None, None)
-    assert check(SERVER | {"client": {"minimum": "0.9.0", "latest": "1.1.0"}}, "1.0.0", 2, "2.0.0") == (None, "1.1.0")
-    assert check(SERVER | {"client": {"minimum": "1.1.0", "latest": "1.1.0"}}, "1.0.0", 2, "2.0.0") == ("update_required", "1.1.0")
-    assert check(SERVER | {"api_release": "1.9.9"}, "1.0.0", 2, "2.0.0")[0] == "api_incompatible"
-    assert check(SERVER | {"api_version": 1, "api_release": "1.2.0"}, "1.0.0", 2, "2.0.0")[0] == "api_incompatible"
-    assert check({"api_version": 1}, "1.0.0", 2, "2.0.0")[0] == "api_incompatible"
-    assert check(None, "1.0.0", 2, "2.0.0")[0] == "api_incompatible"
+    assert check(SERVER, "0.1.0", 2, "0.1.0") == (None, None)
+    assert check(SERVER | {"api_release": "0.1.1"}, "0.1.0", 2, "0.1.0") == (None, None)
+    assert check(SERVER | {"client": {"minimum": "0.0.9", "latest": "0.2.0"}}, "0.1.0", 2, "0.1.0") == (None, "0.2.0")
+    assert check(SERVER | {"client": {"minimum": "0.2.0", "latest": "0.2.0"}}, "0.1.0", 2, "0.1.0") == ("update_required", "0.2.0")
+    assert check(SERVER | {"api_release": "0.0.9"}, "0.1.0", 2, "0.1.0")[0] == "api_incompatible"
+    assert check(SERVER | {"api_version": 3}, "0.1.0", 2, "0.1.0")[0] == "api_incompatible"
+    assert check({"api_version": 1}, "0.1.0", 2, "0.1.0")[0] == "api_incompatible"
+    assert check(None, "0.1.0", 2, "0.1.0")[0] == "api_incompatible"
+
+
+def test_is_api_reading_rejects_legacy_schema_and_unsafe_optionals() -> None:
+    valid = readings.build_reading("sensor.power", "1", POWER, WHEN)
+    assert readings.is_api_reading(valid)
+    assert not readings.is_api_reading({"entity_id": "sensor.power", "timestamp": "x", "value": 1})
+    assert not readings.is_api_reading(valid | {"secret": "not allowed"})
+    assert not readings.is_api_reading(valid | {"state": float("inf")})
+    assert not readings.is_api_reading(valid | {"context": {"labels": ["x"] * 21}})
+    assert not readings.is_api_reading(valid | {"smoothing_window": 0})
