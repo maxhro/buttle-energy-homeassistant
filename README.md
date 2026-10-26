@@ -39,21 +39,24 @@ Der Button öffnet das Repository direkt in deinem HACS. Alternativ von Hand:
 3. „Powermesh Energie“ herunterladen und Home Assistant neu starten
 4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Powermesh Energie**
 
-Voraussetzung: Home Assistant 2024.11 oder neuer und ein Konto auf powermesh.de.
+Voraussetzung für diesen neu gestarteten Prototyp: Home Assistant 2026.10.4
+(getesteter Stand) oder neuer und ein Konto auf powermesh.de.
 Das Integrations-Icon zeigt Home Assistant ab Version 2026.3 an.
 
 ## Einrichtung
 
 1. Auf powermesh.de anmelden und unter **Mein Bereich → Home Assistant** die
-   Einwilligung erteilen und einen Zugangsschlüssel erstellen. Eine Anleitung
+   Einwilligung erteilen und einen persönlichen MQTT-Zugang erstellen. Eine Anleitung
    findest du nach der Anmeldung unter **Hilfe & Wissen → Home Assistant einrichten**.
-2. In Home Assistant den Zugangsschlüssel eintragen.
-   **Vor dem Update:** Entferne den bisherigen Integrationseintrag aus Version 0.x
-   in Home Assistant. Installiere danach Version 1.0.0 und richte Powermesh neu ein.
-   Einstellungen, Entity-IDs und noch nicht übertragene lokale Puffer werden nicht
-   übernommen; prüfe danach Automationen und Dashboards. Bestehende Zugangsschlüssel
-   bleiben im Powermesh-Konto verfügbar, die aktualisierte Einwilligung muss erneut
-   erteilt werden.
+2. In Home Assistant die im Konto angezeigten Broker-Einstellungen und persönlichen
+   Zugangsdaten eintragen. Die Verbindung ist TLS-gesichert und unabhängig von
+   deinem bereits eingerichteten lokalen MQTT-Broker.
+   **Neustart als Prototyp 0.1.0:** Die bisherige HTTP-Integration wird nicht
+   automatisch migriert. Vor dem ausdrücklichen Entfernen alter Einträge lokale
+   Puffer bei Bedarf sichern; das Entfernen löscht sie. Anschließend 0.1.0 aus dem
+   freigegebenen Teststand manuell installieren und neu einrichten. HACS behandelt
+   0.1.0 nach 1.0.0 nicht als normales Update. Alte Releases werden nicht überschrieben.
+   Prüfe danach Automationen und Dashboards. Alte Zugänge sind nicht übertragbar.
 3. Die Integration schlägt anhand deines **Energie-Dashboards** passende Sensoren
    vor (Netz, Solar, Batterie, Geräte). Du kannst die Auswahl anpassen und später
    über **Konfigurieren** ändern oder auf den Vorschlag zurücksetzen.
@@ -64,16 +67,53 @@ Das Integrations-Icon zeigt Home Assistant ab Version 2026.3 an.
    übertragen. Die gewählte Glättung wird mit jedem Wert übermittelt.
 
 Die Integration sendet gesammelt in regelmäßigen Abständen und puffert bei
-Verbindungsproblemen lokal. Status, ausstehende Werte und letzte Übertragung
+Verbindungsproblemen lokal. Werte werden erst nach bestätigter Speicherung aus
+dem Puffer entfernt. Bei einem Zugangswechsel werden alte Puffer nicht stillschweigend
+neu zugeordnet. Der lokale Puffer ist begrenzt; bei Überlauf werden die ältesten
+noch nicht gesendeten Werte verworfen und der Verlust sichtbar gezählt/protokolliert.
+Eine Broker-Verbindung allein bestätigt noch keine Speicherung.
+Status, ausstehende Werte und letzte Übertragung
 siehst du an den Diagnose-Sensoren. Ist ein Update der Integration nötig,
 erscheint eine Reparaturmeldung in Home Assistant.
 
 ## Versionen
 
+Für die vollständige Neuinstallation starten Webanwendung, Schnittstelle und
+Integration gemeinsam bei **0.1.0**. Danach bleiben ihre Versionszyklen unabhängig.
+Bestehende Git-Tags und Releases werden nicht überschrieben. Alte Einträge und
+lokale Puffer werden von den Paket-Skripten weder migriert noch gelöscht.
+
 Die Integration wird unabhängig von der Webanwendung und der Schnittstelle von powermesh.de
 versioniert. Nur bei Änderungen der Schnittstellenfunktionen wird die API-Version erhöht.
 Bitte halte die Integration über HACS aktuell; veraltete Versionen werden vom Server
 abgelehnt, falls eine neuere Mindestversion vorausgesetzt wird.
+
+## Lokale Tests
+
+### Installationspaket (macOS und Windows)
+
+Mit **PowerShell 7** lässt sich ohne Verbindung zu Home Assistant ein Paket bauen:
+
+```powershell
+pwsh -NoProfile -File ./build-package.ps1 -DryRun
+pwsh -NoProfile -File ./build-package.ps1 -BuildPackage
+```
+
+Das Archiv `dist/powermesh-energy-homeassistant-0.1.0.zip` enthält
+`custom_components/powermesh_energy` und die Lizenz, keine Testumgebung, Caches
+oder Zugangsdaten. Vorhandene Archive werden nicht überschrieben.
+Den enthaltenen Komponentenordner in das Konfigurationsverzeichnis von
+Home Assistant entpacken und Home Assistant neu starten. Die Skripte installieren
+nichts automatisch und veröffentlichen kein HACS-Release.
+
+Die PowerShell-Paketprüfung läuft mit `node --test tests/package.test.mjs`
+(Node wird nur für diese lokale Paketprüfung benötigt).
+
+Mit einer separaten Python-Testumgebung: `pip install -r requirements_test.txt`,
+danach `pytest -q` und `python -m compileall -q custom_components`.
+Tests verwenden synthetische Daten und ersetzen den Netzwerktransport.
+Die optionale, ausdrücklich aktivierte lokale Integrationstest-Strecke ist
+im privaten Dienst-Repository beschrieben; sie kontaktiert keine Produktivsysteme.
 
 ## Lizenz
 

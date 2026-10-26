@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_API_KEY, CONF_URL, Platform
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.exceptions import ConfigEntryError
 
 from .api import PowermeshClient
-from .const import DEFAULT_URL
 from .uploader import PowermeshUploader
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
@@ -18,13 +17,11 @@ type PowermeshConfigEntry = ConfigEntry[PowermeshUploader]
 
 async def async_setup_entry(hass: HomeAssistant, entry: PowermeshConfigEntry) -> bool:
     """Start collecting and uploading readings for one powermesh.de account."""
-    if entry.data[CONF_URL].strip().rstrip("/") == "https://powermesh.de":
-        hass.config_entries.async_update_entry(
-            entry,
-            data={**entry.data, CONF_URL: DEFAULT_URL},
-            unique_id=DEFAULT_URL if entry.unique_id == "https://powermesh.de" else entry.unique_id,
-        )
-    client = PowermeshClient(async_get_clientsession(hass), entry.data[CONF_URL], entry.data[CONF_API_KEY])
+    if not all(field in entry.data for field in (CONF_HOST, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)):
+        raise ConfigEntryError("HTTP prototype entries cannot be upgraded. Back up pending data before explicitly removing and recreating this entry for MQTT.")
+    client = PowermeshClient(
+        entry.data[CONF_HOST], entry.data[CONF_PORT], entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
+    )
     uploader = PowermeshUploader(hass, entry, client)
     entry.runtime_data = uploader
     await uploader.async_start()
