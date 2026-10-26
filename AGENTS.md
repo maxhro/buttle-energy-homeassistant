@@ -13,6 +13,8 @@
 - Local Python tests: 50 passed, one opt-in live test skipped. Both package tests
   passed; the private workspace's required compatibility gate passed. Live-service,
   Windows and actual Home Assistant installation acceptance remain open.
+- PR CI requires aiomqtt 2.5.0 to satisfy current Home Assistant constraints;
+  keep the manifest and test dependency pins aligned, never restore 2.4.0.
 - A verified ZIP exists locally in ignored dist. Never commit archives, .env,
   credentials, caches, virtual environments or test runtime data.
 - Public documentation must not describe private interface topics, envelopes,

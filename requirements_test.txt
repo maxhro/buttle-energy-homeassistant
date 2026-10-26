@@ -1,2 +1,2 @@
 pytest-homeassistant-custom-component
-aiomqtt==2.4.0
+aiomqtt==2.5.0
