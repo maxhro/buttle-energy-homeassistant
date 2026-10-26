@@ -15,7 +15,7 @@ from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
-from custom_components.buttle_energy.const import (
+from custom_components.powermesh_energy.const import (
     CONF_ENTITIES,
     CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
@@ -27,8 +27,8 @@ from custom_components.buttle_energy.const import (
 
 from .conftest import API_KEY, ENERGY, GAS, POWER, STATUS_BODY, URL
 
-READINGS_URL = f"{URL}/api/v1/readings"
-STATUS_URL = f"{URL}/api/v1/status"
+READINGS_URL = f"{URL}/api/v2/readings"
+STATUS_URL = f"{URL}/api/v2/status"
 
 
 async def _dashboard(hass: HomeAssistant) -> None:
@@ -57,12 +57,12 @@ async def _dashboard(hass: HomeAssistant) -> None:
 
 async def test_config_flow_uses_dashboard_suggestion(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     await _dashboard(hass)
-    aioclient_mock.get(f"{URL}/api/v1/status", json=STATUS_BODY)
+    aioclient_mock.get(f"{URL}/api/v2/status", json=STATUS_BODY)
 
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     assert result["type"] is FlowResultType.FORM
     default_url = next(k.default() for k in result["data_schema"].schema if k == CONF_URL)
-    assert default_url == DEFAULT_URL == "https://api.buttle.de"
+    assert default_url == DEFAULT_URL == "https://api.powermesh.de"
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_URL: URL + "/", CONF_API_KEY: API_KEY})
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "entities"
@@ -73,9 +73,9 @@ async def test_config_flow_uses_dashboard_suggestion(hass: HomeAssistant, aiocli
     default_interval = next(k.default() for k in result["data_schema"].schema if k == CONF_UPLOAD_INTERVAL)
     assert default_interval == "5min"
     assert aioclient_mock.mock_calls[0][3]["Authorization"] == f"Bearer {API_KEY}"
-    assert aioclient_mock.mock_calls[0][3]["X-Buttle-Client"] == f"homeassistant/{VERSION}"
+    assert aioclient_mock.mock_calls[0][3]["X-Powermesh-Client"] == f"homeassistant/{VERSION}"
 
-    with patch("custom_components.buttle_energy.async_setup_entry", return_value=True):
+    with patch("custom_components.powermesh_energy.async_setup_entry", return_value=True):
         bad = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_ENTITIES: ["sensor.gas"]})
         assert bad["errors"] == {"base": "incompatible"}
         result = await hass.config_entries.flow.async_configure(
@@ -103,18 +103,18 @@ async def test_config_flow_uses_dashboard_suggestion(hass: HomeAssistant, aiocli
         (429, {"error": {"code": "rate_limited"}}, {}, {"base": "rate_limited"}),
         (503, {"error": {"code": "service_unavailable"}}, {}, {"base": "cannot_connect"}),
         (200, STATUS_BODY, {CONF_API_KEY: "secret"}, {CONF_API_KEY: "invalid_key_format"}),
-        (200, STATUS_BODY, {CONF_URL: "http://buttle.test"}, {CONF_URL: "https_required"}),
+        (200, STATUS_BODY, {CONF_URL: "http://powermesh.test"}, {CONF_URL: "https_required"}),
         (426, {"error": {"code": "client_outdated"}}, {}, {"base": "update_required"}),
         (200, STATUS_BODY | {"client": {"minimum": "9.0.0", "latest": "9.0.0"}}, {}, {"base": "update_required"}),
         (200, STATUS_BODY | {"api_release": "1.0.0"}, {}, {"base": "api_incompatible"}),
         (200, STATUS_BODY | {"api_release": "1.1.0"}, {}, {"base": "api_incompatible"}),
-        (200, STATUS_BODY | {"api_version": 2, "api_release": "2.0.0"}, {}, {"base": "api_incompatible"}),
+        (200, STATUS_BODY | {"api_version": 1, "api_release": "1.2.0"}, {}, {"base": "api_incompatible"}),
     ],
 )
 async def test_config_flow_errors(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, status: int, body: dict, user_input: dict, error: dict
 ) -> None:
-    aioclient_mock.get(f"{URL}/api/v1/status", status=status, json=body)
+    aioclient_mock.get(f"{URL}/api/v2/status", status=status, json=body)
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_URL: URL, CONF_API_KEY: API_KEY} | user_input
@@ -153,24 +153,24 @@ async def _flush(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     await hass.async_block_till_done()
 
 
-@pytest.mark.parametrize("url", ["https://buttle.de", "https://buttle.de/", " https://buttle.de/ "])
+@pytest.mark.parametrize("url", ["https://powermesh.de", "https://powermesh.de/", " https://powermesh.de/ "])
 async def test_setup_moves_previous_default_to_api(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, url: str
 ) -> None:
-    aioclient_mock.get("https://api.buttle.de/api/v1/status", json=STATUS_BODY)
+    aioclient_mock.get("https://api.powermesh.de/api/v2/status", json=STATUS_BODY)
     entry = _entry(hass, [])
     hass.config_entries.async_update_entry(
-        entry, data={CONF_URL: url, CONF_API_KEY: API_KEY}, unique_id="https://buttle.de"
+        entry, data={CONF_URL: url, CONF_API_KEY: API_KEY}, unique_id="https://powermesh.de"
     )
     entry_id = entry.entry_id
     options = dict(entry.options)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    assert entry.data == {CONF_URL: "https://api.buttle.de", CONF_API_KEY: API_KEY}
-    assert entry.unique_id == "https://api.buttle.de"
+    assert entry.data == {CONF_URL: "https://api.powermesh.de", CONF_API_KEY: API_KEY}
+    assert entry.unique_id == "https://api.powermesh.de"
     assert entry.entry_id == entry_id
     assert entry.options == options
-    assert str(aioclient_mock.mock_calls[0][1]) == "https://api.buttle.de/api/v1/status"
+    assert str(aioclient_mock.mock_calls[0][1]) == "https://api.powermesh.de/api/v2/status"
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -210,9 +210,9 @@ async def test_uploader_sends_whitelisted_fields_and_sensors(hass: HomeAssistant
     assert _posted(aioclient_mock)[-1][0]["value"] == 101
     assert entry.runtime_data.pending == 0
 
-    status = hass.states.get("sensor.buttle_de_upload_status")
+    status = hass.states.get("sensor.powermesh_de_upload_status")
     assert status is not None and status.state == "ok"
-    assert hass.states.get("sensor.buttle_de_pending_readings").state == "0"
+    assert hass.states.get("sensor.powermesh_de_pending_readings").state == "0"
 
     assert await hass.config_entries.async_unload(entry.entry_id)
 
@@ -275,8 +275,8 @@ async def test_uploader_handles_consent_rate_limit_and_auth(hass: HomeAssistant,
 async def test_reauth_updates_key(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     entry = _entry(hass, ["sensor.a"])
     new_key = "bte_" + "fedcba9876543210" + "_" + "b" * 64
-    aioclient_mock.get(f"{URL}/api/v1/status", json=STATUS_BODY)
-    with patch("custom_components.buttle_energy.async_setup_entry", return_value=True):
+    aioclient_mock.get(f"{URL}/api/v2/status", json=STATUS_BODY)
+    with patch("custom_components.powermesh_energy.async_setup_entry", return_value=True):
         result = await entry.start_reauth_flow(hass)
         assert result["step_id"] == "reauth_confirm"
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_API_KEY: new_key})
@@ -288,7 +288,7 @@ async def test_reauth_updates_key(hass: HomeAssistant, aioclient_mock: AiohttpCl
 async def test_options_flow_reset_to_suggestion(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     await _dashboard(hass)
     entry = _entry(hass, ["sensor.other_power"])
-    with patch("custom_components.buttle_energy.async_setup_entry", return_value=True):
+    with patch("custom_components.powermesh_energy.async_setup_entry", return_value=True):
         await hass.config_entries.async_setup(entry.entry_id)
         result = await hass.config_entries.options.async_init(entry.entry_id)
         default = next(k.default() for k in result["data_schema"].schema if k == CONF_ENTITIES)
@@ -316,10 +316,10 @@ async def test_options_flow_reset_to_suggestion(hass: HomeAssistant, aioclient_m
 
 async def test_config_flow_custom_upload_interval(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     await _dashboard(hass)
-    aioclient_mock.get(f"{URL}/api/v1/status", json=STATUS_BODY)
+    aioclient_mock.get(f"{URL}/api/v2/status", json=STATUS_BODY)
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_URL: URL, CONF_API_KEY: API_KEY})
-    with patch("custom_components.buttle_energy.async_setup_entry", return_value=True):
+    with patch("custom_components.powermesh_energy.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_ENTITIES: ["sensor.grid_import"], CONF_UPLOAD_INTERVAL: "15min"}
         )
@@ -335,7 +335,7 @@ async def test_config_flow_custom_upload_interval(hass: HomeAssistant, aioclient
 async def test_options_flow_custom_upload_interval(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     await _dashboard(hass)
     entry = _entry(hass, ["sensor.grid_import"], upload_interval="5min", smoothing={"sensor.grid_import": "throttle_5min"})
-    with patch("custom_components.buttle_energy.async_setup_entry", return_value=True):
+    with patch("custom_components.powermesh_energy.async_setup_entry", return_value=True):
         await hass.config_entries.async_setup(entry.entry_id)
         result = await hass.config_entries.options.async_init(entry.entry_id)
         result = await hass.config_entries.options.async_configure(
@@ -356,7 +356,7 @@ async def test_options_flow_custom_upload_interval(hass: HomeAssistant, aioclien
 
 
 async def test_diagnostics_redacts_key(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
-    from custom_components.buttle_energy.diagnostics import async_get_config_entry_diagnostics
+    from custom_components.powermesh_energy.diagnostics import async_get_config_entry_diagnostics
 
     aioclient_mock.post(READINGS_URL, json={"accepted": 0, "duplicates": 0})
     entry = _entry(hass, [], aioclient_mock)
@@ -373,7 +373,7 @@ def test_version_matches_manifest() -> None:
     import json
     from pathlib import Path
 
-    manifest = json.loads((Path(__file__).parents[1] / "custom_components/buttle_energy/manifest.json").read_text())
+    manifest = json.loads((Path(__file__).parents[1] / "custom_components/powermesh_energy/manifest.json").read_text())
     assert manifest["version"] == VERSION
 
 
@@ -394,12 +394,12 @@ async def test_uploader_pauses_when_update_required(hass: HomeAssistant, aioclie
 async def test_uploader_reports_available_update_and_426(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     hass.states.async_set("sensor.a", "1", POWER)
     aioclient_mock.post(READINGS_URL, status=426, json={"error": {"code": "client_outdated"}})
-    entry = _entry(hass, ["sensor.a"], aioclient_mock, STATUS_BODY | {"client": {"minimum": "0.1.0", "latest": "0.9.0"}})
+    entry = _entry(hass, ["sensor.a"], aioclient_mock, STATUS_BODY | {"client": {"minimum": "0.9.0", "latest": "1.1.0"}})
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     uploader = entry.runtime_data
     issues = ir.async_get(hass)
-    assert uploader.latest_version == "0.9.0" and uploader.server_release == "1.2.0"
+    assert uploader.latest_version == "1.1.0" and uploader.server_release == "2.0.0"
     assert issues.async_get_issue(DOMAIN, f"update_available_{entry.entry_id}") is not None
     assert uploader.status == "update_required"
     assert issues.async_get_issue(DOMAIN, f"update_required_{entry.entry_id}") is not None

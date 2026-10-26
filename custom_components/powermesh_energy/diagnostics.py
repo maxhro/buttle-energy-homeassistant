@@ -1,4 +1,4 @@
-"""Diagnostics download for Buttle Energie (API key redacted)."""
+"""Diagnostics download for Powermesh Energie (API key redacted)."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 
-from . import ButtleConfigEntry
+from . import PowermeshConfigEntry
 from .const import VERSION
 from .energy_dashboard import async_suggestion
 
 
-async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ButtleConfigEntry) -> dict[str, Any]:
+async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: PowermeshConfigEntry) -> dict[str, Any]:
     """Return configuration and upload state without secrets or reading values."""
     uploader = entry.runtime_data
     suggestion, skipped = await async_suggestion(hass)

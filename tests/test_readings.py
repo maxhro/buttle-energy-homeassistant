@@ -7,10 +7,10 @@ import sys
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
-_PATH = Path(__file__).parents[1] / "custom_components" / "buttle_energy" / "readings.py"
-_SPEC = importlib.util.spec_from_file_location("buttle_readings", _PATH)
+_PATH = Path(__file__).parents[1] / "custom_components" / "powermesh_energy" / "readings.py"
+_SPEC = importlib.util.spec_from_file_location("powermesh_readings", _PATH)
 readings = importlib.util.module_from_spec(_SPEC)
-sys.modules["buttle_readings"] = readings
+sys.modules["powermesh_readings"] = readings
 _SPEC.loader.exec_module(readings)
 
 ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy", "state_class": "total_increasing"}
@@ -124,7 +124,7 @@ def test_invalid_indices() -> None:
     assert readings.invalid_indices(None) == set()
 
 
-SERVER = {"api_version": 1, "api_release": "1.1.0", "client": {"minimum": "0.2.0", "latest": "0.2.0"}}
+SERVER = {"api_version": 2, "api_release": "2.0.0", "client": {"minimum": "1.0.0", "latest": "1.0.0"}}
 
 
 def test_parse_version() -> None:
@@ -136,11 +136,11 @@ def test_parse_version() -> None:
 
 def test_compatibility() -> None:
     check = readings.compatibility
-    assert check(SERVER, "0.2.0", 1, "1.1.0") == (None, None)
-    assert check(SERVER | {"api_release": "1.4.0"}, "0.2.0", 1, "1.1.0") == (None, None)
-    assert check(SERVER | {"client": {"minimum": "0.1.0", "latest": "0.3.0"}}, "0.2.0", 1, "1.1.0") == (None, "0.3.0")
-    assert check(SERVER | {"client": {"minimum": "0.3.0", "latest": "0.3.0"}}, "0.2.0", 1, "1.1.0") == ("update_required", "0.3.0")
-    assert check(SERVER | {"api_release": "1.0.9"}, "0.2.0", 1, "1.1.0")[0] == "api_incompatible"
-    assert check(SERVER | {"api_version": 2, "api_release": "2.0.0"}, "0.2.0", 1, "1.1.0")[0] == "api_incompatible"
-    assert check({"api_version": 1}, "0.2.0", 1, "1.1.0")[0] == "api_incompatible"
-    assert check(None, "0.2.0", 1, "1.1.0")[0] == "api_incompatible"
+    assert check(SERVER, "1.0.0", 2, "2.0.0") == (None, None)
+    assert check(SERVER | {"api_release": "2.1.0"}, "1.0.0", 2, "2.0.0") == (None, None)
+    assert check(SERVER | {"client": {"minimum": "0.9.0", "latest": "1.1.0"}}, "1.0.0", 2, "2.0.0") == (None, "1.1.0")
+    assert check(SERVER | {"client": {"minimum": "1.1.0", "latest": "1.1.0"}}, "1.0.0", 2, "2.0.0") == ("update_required", "1.1.0")
+    assert check(SERVER | {"api_release": "1.9.9"}, "1.0.0", 2, "2.0.0")[0] == "api_incompatible"
+    assert check(SERVER | {"api_version": 1, "api_release": "1.2.0"}, "1.0.0", 2, "2.0.0")[0] == "api_incompatible"
+    assert check({"api_version": 1}, "1.0.0", 2, "2.0.0")[0] == "api_incompatible"
+    assert check(None, "1.0.0", 2, "2.0.0")[0] == "api_incompatible"

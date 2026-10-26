@@ -16,14 +16,14 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .api import (
-    ButtleAuthError,
-    ButtleClient,
-    ButtleConnectionError,
-    ButtleError,
-    ButtleForbiddenError,
-    ButtleOutdatedError,
-    ButtleRateLimitError,
-    ButtleRejectedError,
+    PowermeshAuthError,
+    PowermeshClient,
+    PowermeshConnectionError,
+    PowermeshError,
+    PowermeshForbiddenError,
+    PowermeshOutdatedError,
+    PowermeshRateLimitError,
+    PowermeshRejectedError,
 )
 from .const import (
     API_MAJOR,
@@ -58,10 +58,10 @@ _LOGGER = logging.getLogger(__name__)
 SMOOTHING_TICK = timedelta(seconds=5)
 
 
-class ButtleUploader:
+class PowermeshUploader:
     """Owns the reading buffer and the upload schedule of one config entry."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: ButtleClient) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: PowermeshClient) -> None:
         self.hass = hass
         self.entry = entry
         self.client = client
@@ -140,16 +140,16 @@ class ButtleUploader:
         """Compare versions with the server; pause on incompatibility."""
         try:
             server = await self.client.status()
-        except ButtleOutdatedError as err:
+        except PowermeshOutdatedError as err:
             self._block(STATUS_UPDATE_REQUIRED, err.code)
             return
-        except ButtleAuthError as err:
+        except PowermeshAuthError as err:
             self._paused = True
             self._set_error(STATUS_AUTH_FAILED, err.code)
             self.entry.async_start_reauth(self.hass)
             self._notify()
             return
-        except ButtleError:
+        except PowermeshError:
             # Connection, consent or throttling problems surface during upload.
             return
         self.server_release = server.get("api_release") if isinstance(server.get("api_release"), str) else None
@@ -298,22 +298,22 @@ class ButtleUploader:
             batch = self._buffer[:MAX_READINGS_PER_REQUEST]
             try:
                 result = await self.client.upload(batch)
-            except ButtleConnectionError as err:
+            except PowermeshConnectionError as err:
                 self._set_error(STATUS_OFFLINE, err.code)
                 return
-            except ButtleRateLimitError as err:
+            except PowermeshRateLimitError as err:
                 self._retry_at = dt_util.utcnow() + timedelta(seconds=max(1, min(err.retry_after, 3600)))
                 self._set_error(STATUS_RATE_LIMITED, err.code)
                 return
-            except ButtleOutdatedError as err:
+            except PowermeshOutdatedError as err:
                 self._block(STATUS_UPDATE_REQUIRED, err.code)
                 return
-            except ButtleAuthError as err:
+            except PowermeshAuthError as err:
                 self._paused = True
                 self._set_error(STATUS_AUTH_FAILED, err.code)
                 self.entry.async_start_reauth(self.hass)
                 return
-            except ButtleForbiddenError as err:
+            except PowermeshForbiddenError as err:
                 self._set_error(STATUS_CONSENT_REQUIRED, err.code)
                 ir.async_create_issue(
                     self.hass,
@@ -325,13 +325,13 @@ class ButtleUploader:
                     translation_placeholders={"url": self.client.base_url},
                 )
                 return
-            except ButtleRejectedError as err:
+            except PowermeshRejectedError as err:
                 rejected = invalid_indices(err.body)
                 if not rejected:
                     # Unknown rejection of the whole batch: drop it so it cannot block later data.
                     rejected = set(range(len(batch)))
                 _LOGGER.warning(
-                    "buttle.de rejected %s of %s readings (%s); they are discarded",
+                    "powermesh.de rejected %s of %s readings (%s); they are discarded",
                     len(rejected), len(batch), err.code,
                 )
                 self.dropped_total += len(rejected)

@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect buttle.de",
-        "description": "Create an API key on buttle.de under Mein Bereich → Energie-API and give consent to the transfer. The key is shown only once.",
+        "title": "Connect powermesh.de",
+        "description": "Create an API key on powermesh.de under Mein Bereich → Energie-API and give consent to the transfer. The key is shown only once.",
         "data": {
           "url": "Server",
           "api_key": "API key"
@@ -21,12 +21,12 @@
           "upload_interval": "Upload interval"
         },
         "data_description": {
-          "upload_interval": "How often new readings are sent to buttle.de."
+          "upload_interval": "How often new readings are sent to powermesh.de."
         }
       },
       "reauth_confirm": {
         "title": "New API key",
-        "description": "buttle.de ({url}) rejected the stored API key. Create a new key and enter it here.",
+        "description": "powermesh.de ({url}) rejected the stored API key. Create a new key and enter it here.",
         "data": {
           "api_key": "API key"
         }
@@ -38,8 +38,8 @@
     },
     "error": {
       "invalid_auth": "API key rejected.",
-      "invalid_key_format": "This is not a buttle.de API key (bte_…).",
-      "consent_required": "Consent to the transfer is missing on buttle.de, or the key lacks the write scope.",
+      "invalid_key_format": "This is not a powermesh.de API key (bte_…).",
+      "consent_required": "Consent to the transfer is missing on powermesh.de, or the key lacks the write scope.",
       "rate_limited": "Too many requests. Try again in a minute.",
       "cannot_connect": "Cannot connect to the server.",
       "https_required": "HTTPS is required.",
@@ -66,7 +66,7 @@
           "use_dashboard_suggestion": "Reset to dashboard suggestion"
         },
         "data_description": {
-          "upload_interval": "How often new readings are sent to buttle.de.",
+          "upload_interval": "How often new readings are sent to powermesh.de.",
           "use_dashboard_suggestion": "Replaces the selection with the current suggestion; review and submit again."
         }
       },
@@ -106,19 +106,19 @@
   },
   "issues": {
     "consent_required": {
-      "title": "buttle.de: consent required",
-      "description": "buttle.de refuses to store readings. Give consent to the energy data transfer at {url} (Mein Bereich → Energie-API) and check the key's scopes. Readings are buffered locally meanwhile; reload the integration afterwards."
+      "title": "powermesh.de: consent required",
+      "description": "powermesh.de refuses to store readings. Give consent to the energy data transfer at {url} (Mein Bereich → Energie-API) and check the key's scopes. Readings are buffered locally meanwhile; reload the integration afterwards."
     },
     "update_required": {
-      "title": "Buttle Energie: update required",
+      "title": "Powermesh Energie: update required",
       "description": "The server no longer accepts version {installed} of the integration. Readings are kept locally. Update the integration in HACS and restart Home Assistant."
     },
     "api_incompatible": {
-      "title": "Buttle Energie: incompatible server",
+      "title": "Powermesh Energie: incompatible server",
       "description": "Version {installed} of the integration does not support the server version ({server}). Readings are kept locally. Check for an integration update in HACS."
     },
     "update_available": {
-      "title": "Buttle Energie: update available",
+      "title": "Powermesh Energie: update available",
       "description": "Version {latest} of the integration is available (installed: {installed}). Update it in HACS."
     }
   },

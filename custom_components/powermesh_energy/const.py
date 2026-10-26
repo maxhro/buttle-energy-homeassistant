@@ -1,17 +1,17 @@
-"""Constants for the Buttle Energie integration."""
+"""Constants for the Powermesh Energie integration."""
 
 from __future__ import annotations
 
 from datetime import timedelta
 from typing import Final
 
-DOMAIN: Final = "buttle_energy"
+DOMAIN: Final = "powermesh_energy"
 # Keep in sync with manifest.json.
-VERSION: Final = "0.4.2"
-API_MAJOR: Final = 1
-MIN_API_RELEASE: Final = "1.2.0"
+VERSION: Final = "1.0.0"
+API_MAJOR: Final = 2
+MIN_API_RELEASE: Final = "2.0.0"
 CLIENT_ID: Final = f"homeassistant/{VERSION}"
-DEFAULT_URL: Final = "https://api.buttle.de"
+DEFAULT_URL: Final = "https://api.powermesh.de"
 
 CONF_ENTITIES: Final = "entities"
 CONF_USE_SUGGESTION: Final = "use_dashboard_suggestion"
