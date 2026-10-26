@@ -8,11 +8,11 @@ import types
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-_DIR = Path(__file__).parents[1] / "custom_components" / "buttle_energy"
-_PACKAGE = types.ModuleType("buttle_smoothing_pkg")
+_DIR = Path(__file__).parents[1] / "custom_components" / "powermesh_energy"
+_PACKAGE = types.ModuleType("powermesh_smoothing_pkg")
 _PACKAGE.__path__ = [str(_DIR)]
-sys.modules["buttle_smoothing_pkg"] = _PACKAGE
-smoothing = importlib.import_module("buttle_smoothing_pkg.smoothing")
+sys.modules["powermesh_smoothing_pkg"] = _PACKAGE
+smoothing = importlib.import_module("powermesh_smoothing_pkg.smoothing")
 
 START = datetime(2026, 1, 2, 3, 4, 0, tzinfo=UTC)
 

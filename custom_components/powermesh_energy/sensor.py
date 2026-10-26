@@ -10,38 +10,38 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import ButtleConfigEntry
+from . import PowermeshConfigEntry
 from .const import DOMAIN, STATUSES, VERSION
-from .uploader import ButtleUploader
+from .uploader import PowermeshUploader
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ButtleConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: PowermeshConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Create the diagnostic sensors."""
     uploader = entry.runtime_data
     async_add_entities(
         [
-            ButtleStatusSensor(uploader),
-            ButtlePendingSensor(uploader),
-            ButtleLastUploadSensor(uploader),
+            PowermeshStatusSensor(uploader),
+            PowermeshPendingSensor(uploader),
+            PowermeshLastUploadSensor(uploader),
         ]
     )
 
 
-class _ButtleSensor(SensorEntity):
+class _PowermeshSensor(SensorEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    def __init__(self, uploader: ButtleUploader, key: str) -> None:
+    def __init__(self, uploader: PowermeshUploader, key: str) -> None:
         self._uploader = uploader
         self._attr_translation_key = key
         self._attr_unique_id = f"{uploader.entry.entry_id}_{key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, uploader.entry.entry_id)},
-            name="buttle.de",
-            manufacturer="Buttle",
+            name="powermesh.de",
+            manufacturer="Powermesh",
             entry_type=DeviceEntryType.SERVICE,
             configuration_url=uploader.client.base_url,
             sw_version=VERSION,
@@ -51,11 +51,11 @@ class _ButtleSensor(SensorEntity):
         self.async_on_remove(self._uploader.async_add_listener(self.async_write_ha_state))
 
 
-class ButtleStatusSensor(_ButtleSensor):
+class PowermeshStatusSensor(_PowermeshSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = STATUSES
 
-    def __init__(self, uploader: ButtleUploader) -> None:
+    def __init__(self, uploader: PowermeshUploader) -> None:
         super().__init__(uploader, "upload_status")
 
     @property
@@ -75,10 +75,10 @@ class ButtleStatusSensor(_ButtleSensor):
         }
 
 
-class ButtlePendingSensor(_ButtleSensor):
+class PowermeshPendingSensor(_PowermeshSensor):
     _attr_native_unit_of_measurement = "readings"
 
-    def __init__(self, uploader: ButtleUploader) -> None:
+    def __init__(self, uploader: PowermeshUploader) -> None:
         super().__init__(uploader, "pending_readings")
 
     @property
@@ -86,10 +86,10 @@ class ButtlePendingSensor(_ButtleSensor):
         return self._uploader.pending
 
 
-class ButtleLastUploadSensor(_ButtleSensor):
+class PowermeshLastUploadSensor(_PowermeshSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def __init__(self, uploader: ButtleUploader) -> None:
+    def __init__(self, uploader: PowermeshUploader) -> None:
         super().__init__(uploader, "last_upload")
 
     @property

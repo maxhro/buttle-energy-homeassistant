@@ -1,4 +1,4 @@
-"""Config and options flow for Buttle Energie."""
+"""Config and options flow for Powermesh Energie."""
 
 from __future__ import annotations
 
@@ -25,13 +25,13 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import (
-    ButtleAuthError,
-    ButtleClient,
-    ButtleConnectionError,
-    ButtleError,
-    ButtleForbiddenError,
-    ButtleOutdatedError,
-    ButtleRateLimitError,
+    PowermeshAuthError,
+    PowermeshClient,
+    PowermeshConnectionError,
+    PowermeshError,
+    PowermeshForbiddenError,
+    PowermeshOutdatedError,
+    PowermeshRateLimitError,
     normalize_url,
 )
 from .const import (
@@ -70,18 +70,18 @@ async def _async_validate(hass: HomeAssistant, url: str, api_key: str) -> tuple[
     if key_public_id(api_key) is None:
         return url, {CONF_API_KEY: "invalid_key_format"}
     try:
-        server = await ButtleClient(async_get_clientsession(hass), url, api_key).status()
-    except ButtleOutdatedError:
+        server = await PowermeshClient(async_get_clientsession(hass), url, api_key).status()
+    except PowermeshOutdatedError:
         return url, {"base": "update_required"}
-    except ButtleAuthError:
+    except PowermeshAuthError:
         return url, {"base": "invalid_auth"}
-    except ButtleForbiddenError:
+    except PowermeshForbiddenError:
         return url, {"base": "consent_required"}
-    except ButtleRateLimitError:
+    except PowermeshRateLimitError:
         return url, {"base": "rate_limited"}
-    except ButtleConnectionError:
+    except PowermeshConnectionError:
         return url, {"base": "cannot_connect"}
-    except ButtleError:
+    except PowermeshError:
         return url, {"base": "unknown"}
     problem, _ = compatibility(server, VERSION, API_MAJOR, MIN_API_RELEASE)
     return url, {"base": problem} if problem else {}
@@ -137,8 +137,8 @@ def _incompatible(hass: HomeAssistant, entities: list[str]) -> list[str]:
     ]
 
 
-class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Set up a buttle.de account with a personal API key."""
+class PowermeshConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Set up a powermesh.de account with a personal API key."""
 
     VERSION = 1
 
@@ -208,7 +208,7 @@ class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
         entities = self._options[CONF_ENTITIES]
         if user_input is not None:
             return self.async_create_entry(
-                title=f"buttle.de ({self._url.split('://', 1)[1]})",
+                title=f"powermesh.de ({self._url.split('://', 1)[1]})",
                 data={CONF_URL: self._url, CONF_API_KEY: self._api_key},
                 options=self._options | {CONF_SMOOTHING: _smoothing_choices(entities, user_input)},
             )
@@ -242,10 +242,10 @@ class ButtleConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         """Allow adjusting the transferred entities later."""
-        return ButtleOptionsFlow()
+        return PowermeshOptionsFlow()
 
 
-class ButtleOptionsFlow(OptionsFlow):
+class PowermeshOptionsFlow(OptionsFlow):
     """Adjust which entities are transferred, the upload interval and the smoothing."""
 
     def __init__(self) -> None:

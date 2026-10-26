@@ -38,7 +38,7 @@ _EXCLUDED_SOURCE_TYPES = frozenset({"water"})
 
 
 def key_public_id(api_key: str) -> str | None:
-    """Return the public part of a buttle.de API key, or None if malformed."""
+    """Return the public part of a powermesh.de API key, or None if malformed."""
     match = API_KEY_PATTERN.match(api_key.strip())
     return match.group(1) if match else None
 
