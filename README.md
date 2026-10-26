@@ -37,7 +37,7 @@ Der Button öffnet das Repository direkt in deinem HACS. Alternativ von Hand:
 3. „Powermesh Energie“ herunterladen und Home Assistant neu starten
 4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Powermesh Energie**
 
-Voraussetzung für diesen neu gestarteten Prototyp: Home Assistant 2026.10.4
+Voraussetzung: Home Assistant 2026.10.4
 (getesteter Stand) oder neuer und ein Konto auf powermesh.de.
 Das Integrations-Icon zeigt Home Assistant ab Version 2026.3 an.
 
@@ -49,8 +49,6 @@ Das Integrations-Icon zeigt Home Assistant ab Version 2026.3 an.
 2. In Home Assistant die Integration hinzufügen und den persönlichen API-Schlüssel
    eintragen. Andere Home-Assistant-Integrationen und lokale Broker-Einstellungen
    werden davon nicht geändert.
-   Ältere Einträge und lokal gepufferte Daten werden nicht automatisch umgewandelt;
-   sichere benötigte lokale Daten, bevor du einen alten Eintrag ausdrücklich entfernst.
 3. Die Integration schlägt anhand deines **Energie-Dashboards** Sensoren vor. Das ist
    nur eine Orientierung: Du kannst jeden numerischen Sensor auswählen, auch
    Temperatur-Sensoren. Die Auswahl lässt sich später über **Konfigurieren** ändern
@@ -62,8 +60,8 @@ Das Integrations-Icon zeigt Home Assistant ab Version 2026.3 an.
 
 Die Integration sendet gesammelt in regelmäßigen Abständen und puffert bei
 Verbindungsproblemen lokal. Werte werden erst nach einer ausdrücklichen
-Speicherbestätigung aus dem Puffer entfernt. Bei einem Schlüsselwechsel werden alte
-Puffer nicht stillschweigend neu zugeordnet. Der lokale Puffer ist begrenzt; bei
+Speicherbestätigung aus dem Puffer entfernt. Bei einem Schlüsselwechsel werden
+ausstehende Werte nicht stillschweigend neu zugeordnet. Der lokale Puffer ist begrenzt; bei
 Überlauf werden die ältesten noch nicht gesendeten Werte verworfen und der Verlust
 sichtbar gezählt/protokolliert.
 Status, ausstehende Werte und letzte Übertragung
