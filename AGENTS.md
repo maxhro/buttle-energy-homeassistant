@@ -2,8 +2,9 @@
 
 ## Current baseline
 
-- Version `0.1.0`: selected numeric sensor readings, optional allowlisted Home
-  Assistant metadata, smoothing and bounded offline buffering for powermesh.de.
+- Version `0.2.0` (requires service API release `0.2.0`): selected numeric
+  sensor readings, optional allowlisted Home Assistant metadata, smoothing and
+  bounded offline buffering for powermesh.de.
   Smart-home comparison and improvement potential are **in Entwicklung**,
   not implemented. Do not add analysis, exports, control or data sharing.
 - Keep `manifest.json` and `const.py` versions aligned. Website, service and
@@ -18,6 +19,28 @@
   buffering, confirmed-storage removal and visible loss/error reporting.
   Pending values must not be silently reassigned on a credential change.
   Do not reinterpret incompatible stored data or delete user data automatically.
+
+## Setup paths and trust boundary
+
+- Setup offers an existing personal API key or a new account with an
+  operator-issued invitation (24-hour, single-use bearer authorization, not
+  proof of an official client). Existing accounts are rejected by the service.
+- Privacy, terms and storage consent are separate explicit confirmations with
+  the current consent versions. Entities and smoothing are chosen before the
+  single registration request; the issued key is stored at once. Never retry
+  registration automatically, never retrieve keys another way; ambiguous
+  outcomes abort with a warning that the invitation may be consumed.
+- Email, password and invitation are sent only via HTTPS to the fixed service and
+  never persisted in entries, storage, logs, diagnostics or issues.
+- Website email confirmation and TOTP enrollment must finish within 168 hours.
+  Show the deadline immediately and keep a persistent repair issue until the
+  service reports `setup_required: false`; expired accounts stay visible as an
+  auth problem with no automatic re-registration or key issuance. The service
+  rejects expired keys with its ordinary auth error, so expiry is derived from the
+  remembered server deadline; do not invent dedicated error codes.
+- A registration response with a valid key but malformed account status keeps
+  the key and shows a persistent protocol-error issue without a fabricated
+  deadline until the service reports the account status.
 - The current implementation is the project baseline. Describe current behavior
   and constraints, not implementation history or earlier project states.
 

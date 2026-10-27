@@ -7,13 +7,26 @@ from typing import Final
 
 DOMAIN: Final = "powermesh_energy"
 # Keep in sync with manifest.json.
-VERSION: Final = "0.1.0"
-API_RELEASE: Final = "0.1.0"
+VERSION: Final = "0.2.0"
+API_RELEASE: Final = "0.2.0"
 API_MAJOR: Final = 2
+# Account setup status is part of every status/upload response since 0.2.0.
 MIN_API_RELEASE: Final = API_RELEASE
 CLIENT_ID: Final = f"homeassistant/{VERSION}"
 DEFAULT_URL: Final = "https://api.powermesh.de"
 CONF_API_KEY: Final = "api_key"
+# Registration deadline seed (unix seconds); never credentials, email or invitation.
+CONF_SETUP_EXPIRES_AT: Final = "account_setup_expires_at"
+# Set when registration returned a key without a valid account status.
+CONF_ACCOUNT_STATUS_UNKNOWN: Final = "account_status_unknown"
+
+REGISTRATION_PATH: Final = "/api/v2/register"
+REGISTRATION_CONSENT_VERSION: Final = "2026-10-27-ha-registration-v1"
+ENERGY_CONSENT_VERSION: Final = "2026-10-26-rest-metadata-0.1.0"
+ACCOUNT_SETUP_HOURS: Final = 168
+PRIVACY_URL: Final = "https://powermesh.de/?r=security"
+TERMS_URL: Final = "https://powermesh.de/?r=terms"
+WEBSITE_URL: Final = "https://powermesh.de"
 MAX_BODY_BYTES: Final = 131072
 
 CONF_ENTITIES: Final = "entities"

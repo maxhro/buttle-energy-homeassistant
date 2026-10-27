@@ -3,6 +3,14 @@
     "step": {
       "user": {
         "title": "Connect powermesh.de",
+        "description": "Choose whether to use an existing personal API key or to create a new powermesh.de account with an invitation code.",
+        "menu_options": {
+          "api_key": "Use existing API key",
+          "register": "Create new account with invitation code"
+        }
+      },
+      "api_key": {
+        "title": "Connect powermesh.de",
         "description": "Give consent on powermesh.de and enter your personal API key. Only selected sensor readings are transferred; available names and assigned area, floor and labels may be included as optional context.",
         "data": {
           "api_key": "Personal API key"
@@ -29,6 +37,32 @@
       "smoothing": {
         "title": "Smoothing per entity",
         "description": "Choose per entity how values are smoothed before sending, similar to the Home Assistant filter helper. \"Mean\" sends the time-weighted average of each window, \"At most one value\" sends the first value of each window and drops the rest. Fewer values are transferred with longer windows. Default: mean over 1 minute."
+      },
+      "register": {
+        "title": "New account: information and consent",
+        "description": "A new powermesh.de account requires an invitation code provided by the operator. The code is valid for 24 hours and allows exactly one registration; it does not prove that the official integration is used. Existing accounts are rejected – connect them with an API key.\n\nOnly the sensors you select in the next step are transferred: sensor ID, time, numeric value and unit. Optionally, sensor name, device and state class, area, floor, labels and device ID may be included. The data is pseudonymous and is currently only stored, not analysed, sold or shared.\n\nImportant: within {hours} hours after registration you must confirm your email address and set up the authenticator (two-factor sign-in) on powermesh.de. Otherwise the account is blocked and deleted together with all stored data.\n\n[Privacy notice]({privacy_url}) · [Terms of use]({terms_url}). The powermesh.de terms of use apply.",
+        "data": {
+          "consent_privacy": "I have read the privacy notice on user management, the service and the protection of my access.",
+          "consent_terms": "I accept the terms of use, version 2026-10-27-ha-registration-v1. I am aware that this is a preliminary draft that has not been legally reviewed.",
+          "consent_storage": "I consent to storing energy readings as described below."
+        },
+        "data_description": {
+          "consent_storage": "I consent to Powermesh assigning the numeric sensor readings I send from Home Assistant (sensor ID, time, numeric value and unit) to my user account and storing them until the end of the retention period. Where available, sensor name, device and state class, area, floor, labels and device ID may also be stored. This data is pseudonymous, may allow conclusions about my household and is currently only stored, not analysed. It is not sold or passed on to third parties. I can withdraw consent at any time; all API keys are then revoked and all stored readings including metadata are deleted."
+        }
+      },
+      "register_account": {
+        "title": "New account: credentials",
+        "description": "These details are sent once and only via HTTPS to powermesh.de; the registration is never retried automatically. Home Assistant then stores only the issued API key, not your email address, password or invitation code.\n\nAfterwards, within {hours} hours: sign in at {url} with email address and password (without authenticator code), request and confirm the email link, then set up the authenticator.",
+        "data": {
+          "email": "Email address",
+          "password": "Password",
+          "password_confirm": "Repeat password",
+          "invitation_code": "Invitation code"
+        },
+        "data_description": {
+          "password": "Must meet the powermesh.de password rules.",
+          "invitation_code": "Single-use code from the operator."
+        }
       }
     },
     "error": {
@@ -40,11 +74,29 @@
       "no_entities": "Select at least one entity.",
       "incompatible": "Select sensor entities only: {invalid}",
       "api_incompatible": "The server version is not compatible with this version of the integration.",
-      "update_required": "Please update the integration (HACS) to connect to this server."
+      "update_required": "Please update the integration (HACS) to connect to this server.",
+      "consent_missing": "Please confirm this statement explicitly.",
+      "invalid_email": "Enter a valid email address.",
+      "password_required": "Enter a password.",
+      "password_mismatch": "The passwords do not match.",
+      "invitation_required": "Enter the invitation code.",
+      "registration_in_progress": "The registration is already being sent. Please wait.",
+      "invalid_registration": "powermesh.de did not accept the details. Check the email address and password rules.",
+      "invitation_invalid": "The invitation code is invalid, expired or already used. Ask the operator for a new code.",
+      "account_exists": "An account already exists for this email address. Create an API key on powermesh.de and choose \"Use existing API key\".",
+      "registration_rate_limited": "Too many registration attempts. Try again later.",
+      "registration_rejected": "powermesh.de rejected the registration.",
+      "registration_unavailable": "The service does not currently offer registration."
     },
     "abort": {
       "already_configured": "This server is already configured.",
-      "reauth_successful": "API key updated."
+      "reauth_successful": "API key updated.",
+      "registration_uncertain": "The registration outcome is unclear (for example a timeout or lost connection). The account may have been created; in that case the invitation code is used up and cannot be reused. Nothing is retried automatically. Sign in on powermesh.de with email address and password: if that works, complete email confirmation and authenticator setup in time, then create an API key and choose \"Use existing API key\". Otherwise ask the operator for a new code.",
+      "registration_incomplete": "The registration was not fully prepared. Please restart the setup."
+    },
+    "create_entry": {
+      "account_setup_required": "The account was created and the API key stored in Home Assistant. Setup is not complete yet: by {deadline}, sign in at {url} with email address and password, request and confirm the email link and set up the authenticator. Otherwise the account is blocked and deleted together with all stored data.\n\n{warning}",
+      "account_status_unknown": "The API key was issued and stored in Home Assistant, but powermesh.de did not return a valid account status (protocol error). The deadline is unknown. Within {hours} hours of registration, sign in at {url} with email address and password, request and confirm the email link and set up the authenticator; otherwise the account is blocked and deleted together with all stored data. Do not register again with the same invitation code."
     }
   },
   "options": {
@@ -124,6 +176,18 @@
     "update_available": {
       "title": "Powermesh Energie: update available",
       "description": "Version {latest} of the integration is available (installed: {installed}). Update it in HACS."
+    },
+    "account_setup_required": {
+      "title": "powermesh.de: complete account setup",
+      "description": "The account registered via Home Assistant is not fully set up yet. By {deadline}, sign in at {url} with email address and password, request the confirmation link by email, confirm it and set up the authenticator. Otherwise the account is blocked and then deleted together with all stored readings and data. This notice disappears only once powermesh.de confirms completion.\n\n{warning}"
+    },
+    "account_setup_expired": {
+      "title": "powermesh.de: account not set up in time",
+      "description": "Account setup was not completed by {deadline}. The account is blocked and will be deleted with all stored data. No new account or key is created automatically. Pending readings stay local until you remove the entry. Remove the entry and set up the integration again with a new invitation code or an existing API key."
+    },
+    "account_status_unknown": {
+      "title": "powermesh.de: account status unknown",
+      "description": "Registration issued an API key, but powermesh.de did not report a valid account status (protocol error), so no deadline is known. Complete setup at {url} as soon as possible: sign in with email address and password, request and confirm the email link and set up the authenticator. Accounts not set up within the registration deadline are blocked and deleted with all stored data. This notice disappears once powermesh.de reports the account status."
     }
   },
   "selector": {

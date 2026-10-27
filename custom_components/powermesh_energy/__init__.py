@@ -43,12 +43,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: PowermeshConfigEntry) -
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: PowermeshConfigEntry) -> None:
-    """Delete the local offline buffer when the integration is removed."""
+    """Delete the local offline buffer and account notices when the integration is removed."""
+    from homeassistant.helpers import issue_registry as ir
     from homeassistant.helpers.storage import Store
 
     from .const import DOMAIN, STORAGE_VERSION
+    from .uploader import ACCOUNT_ISSUES
 
     await Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}.buffer").async_remove()
+    for issue in ACCOUNT_ISSUES:
+        ir.async_delete_issue(hass, DOMAIN, f"{issue}_{entry.entry_id}")
 
 
 async def _async_reload(hass: HomeAssistant, entry: PowermeshConfigEntry) -> None:

@@ -3,6 +3,14 @@
     "step": {
       "user": {
         "title": "Mit powermesh.de verbinden",
+        "description": "Wähle, ob du einen vorhandenen persönlichen API-Schlüssel verwendest oder mit einem Einladungscode ein neues powermesh.de-Konto anlegst.",
+        "menu_options": {
+          "api_key": "Vorhandenen API-Schlüssel verwenden",
+          "register": "Neues Konto mit Einladungscode anlegen"
+        }
+      },
+      "api_key": {
+        "title": "Mit powermesh.de verbinden",
         "description": "Erteile auf powermesh.de die Einwilligung und trage deinen persönlichen API-Schlüssel ein. Übertragen werden nur ausgewählte Sensorwerte; verfügbare Namen sowie zugewiesene Bereiche, Etagen und Labels können als optionaler Kontext mitgesendet werden.",
         "data": {
           "api_key": "Persönlicher API-Schlüssel"
@@ -29,6 +37,32 @@
       "smoothing": {
         "title": "Glättung je Entität",
         "description": "Lege je Entität fest, wie Werte vor dem Senden geglättet werden – ähnlich dem Filter-Helfer von Home Assistant. „Mittelwert“ sendet den zeitgewichteten Durchschnitt je Zeitfenster, „Höchstens ein Wert“ sendet den ersten Wert je Fenster und verwirft die übrigen. Längere Fenster übertragen weniger Werte. Standard: Mittelwert über 1 Minute."
+      },
+      "register": {
+        "title": "Neues Konto: Hinweise und Einwilligungen",
+        "description": "Für ein neues powermesh.de-Konto benötigst du einen Einladungscode, den du vom Betreiber erhältst. Der Code ist 24 Stunden gültig und erlaubt genau eine Registrierung; er ist kein Nachweis, dass es sich um die offizielle Integration handelt. Bestehende Konten werden abgelehnt – verbinde sie mit einem API-Schlüssel.\n\nÜbertragen werden nur die Sensoren, die du im nächsten Schritt auswählst: Sensor-Kennung, Zeitpunkt, Zahlenwert und Einheit. Optional können Sensorname, Geräte- und Zustandsklasse, Bereich, Etage, Labels und Gerätekennung mitgesendet werden. Die Daten sind pseudonym und werden derzeit nur gespeichert, nicht ausgewertet, verkauft oder weitergegeben.\n\nWichtig: Innerhalb von {hours} Stunden nach der Registrierung musst du auf powermesh.de deine E-Mail-Adresse bestätigen und den Authenticator (Zwei-Faktor-Anmeldung) einrichten. Andernfalls wird das Konto gesperrt und mit allen gespeicherten Daten gelöscht.\n\n[Datenschutzhinweise]({privacy_url}) · [Nutzungsbedingungen]({terms_url}). Es gelten die Nutzungsbedingungen von powermesh.de.",
+        "data": {
+          "consent_privacy": "Ich habe die Datenschutzhinweise zur Benutzerverwaltung, zum Service und zum Schutz meines Zugangs gelesen.",
+          "consent_terms": "Ich akzeptiere die Nutzungsbedingungen, Version 2026-10-27-ha-registration-v1. Mir ist bekannt, dass es sich um einen vorläufigen, nicht rechtlich geprüften Entwurf handelt.",
+          "consent_storage": "Ich willige in die Speicherung der Energiemesswerte wie unten beschrieben ein."
+        },
+        "data_description": {
+          "consent_storage": "Ich willige ein, dass Powermesh die von mir über Home Assistant gesendeten numerischen Sensorwerte (Sensor-Kennung, Zeitpunkt, Zahlenwert und Einheit) meinem Benutzerkonto zuordnet und bis zum Ablauf der Aufbewahrungsfrist speichert. Soweit vorhanden, können zusätzlich Sensorname, Geräte- und Zustandsklasse, Raum, Etage, Labels und Gerätekennung gespeichert werden. Diese Daten sind pseudonym, können Rückschlüsse auf meinen Haushalt ermöglichen und werden derzeit ausschließlich gespeichert, nicht ausgewertet. Sie werden nicht verkauft oder an Dritte weitergegeben. Ich kann die Einwilligung jederzeit widerrufen; dabei werden alle API-Schlüssel gesperrt und alle gespeicherten Messwerte einschließlich Metadaten gelöscht."
+        }
+      },
+      "register_account": {
+        "title": "Neues Konto: Zugangsdaten",
+        "description": "Die Angaben werden einmalig und nur per HTTPS an powermesh.de gesendet; die Registrierung wird nicht automatisch wiederholt. Home Assistant speichert danach nur den ausgegebenen API-Schlüssel, nicht E-Mail-Adresse, Passwort oder Einladungscode.\n\nDanach innerhalb von {hours} Stunden: Auf {url} mit E-Mail-Adresse und Passwort anmelden (ohne Authenticator-Code), den Bestätigungslink per E-Mail anfordern und bestätigen, anschließend den Authenticator einrichten.",
+        "data": {
+          "email": "E-Mail-Adresse",
+          "password": "Passwort",
+          "password_confirm": "Passwort wiederholen",
+          "invitation_code": "Einladungscode"
+        },
+        "data_description": {
+          "password": "Muss den Passwortregeln von powermesh.de entsprechen.",
+          "invitation_code": "Einmalig gültiger Code vom Betreiber."
+        }
       }
     },
     "error": {
@@ -40,11 +74,29 @@
       "no_entities": "Bitte mindestens eine Entität auswählen.",
       "incompatible": "Wähle nur Sensor-Entitäten aus: {invalid}",
       "api_incompatible": "Die Serverversion passt nicht zu dieser Version der Integration.",
-      "update_required": "Bitte die Integration (HACS) aktualisieren, um diesen Server zu verbinden."
+      "update_required": "Bitte die Integration (HACS) aktualisieren, um diesen Server zu verbinden.",
+      "consent_missing": "Bitte diese Erklärung ausdrücklich bestätigen.",
+      "invalid_email": "Bitte eine gültige E-Mail-Adresse eingeben.",
+      "password_required": "Bitte ein Passwort eingeben.",
+      "password_mismatch": "Die Passwörter stimmen nicht überein.",
+      "invitation_required": "Bitte den Einladungscode eingeben.",
+      "registration_in_progress": "Die Registrierung wird bereits gesendet. Bitte warten.",
+      "invalid_registration": "powermesh.de hat die Angaben nicht akzeptiert. Prüfe E-Mail-Adresse und Passwortregeln.",
+      "invitation_invalid": "Der Einladungscode ist ungültig, abgelaufen oder bereits verwendet. Bitte beim Betreiber einen neuen Code anfordern.",
+      "account_exists": "Für diese E-Mail-Adresse besteht bereits ein Konto. Erstelle auf powermesh.de einen API-Schlüssel und wähle „Vorhandenen API-Schlüssel verwenden“.",
+      "registration_rate_limited": "Zu viele Registrierungsversuche. Bitte später erneut versuchen.",
+      "registration_rejected": "powermesh.de hat die Registrierung abgelehnt.",
+      "registration_unavailable": "Der Dienst bietet die Registrierung derzeit nicht an."
     },
     "abort": {
       "already_configured": "Dieser Server ist bereits eingerichtet.",
-      "reauth_successful": "API-Schlüssel aktualisiert."
+      "reauth_successful": "API-Schlüssel aktualisiert.",
+      "registration_uncertain": "Das Ergebnis der Registrierung ist unklar (zum Beispiel wegen Zeitüberschreitung oder Verbindungsabbruch). Das Konto wurde möglicherweise angelegt; der Einladungscode ist dann verbraucht und kann nicht erneut verwendet werden. Es wird nichts automatisch wiederholt. Melde dich auf powermesh.de mit E-Mail-Adresse und Passwort an: Gelingt das, schließe E-Mail-Bestätigung und Authenticator fristgerecht ab, erstelle danach einen API-Schlüssel und wähle „Vorhandenen API-Schlüssel verwenden“. Andernfalls fordere beim Betreiber einen neuen Code an.",
+      "registration_incomplete": "Die Registrierung wurde nicht vollständig vorbereitet. Bitte die Einrichtung neu starten."
+    },
+    "create_entry": {
+      "account_setup_required": "Das Konto wurde angelegt und der API-Schlüssel in Home Assistant gespeichert. Die Einrichtung ist noch nicht abgeschlossen: Melde dich bis {deadline} auf {url} mit E-Mail-Adresse und Passwort an, fordere den Bestätigungslink an, bestätige ihn und richte den Authenticator ein. Andernfalls wird das Konto gesperrt und mit allen gespeicherten Daten gelöscht.\n\n{warning}",
+      "account_status_unknown": "Der API-Schlüssel wurde ausgestellt und in Home Assistant gespeichert, aber powermesh.de hat keinen gültigen Kontostatus geliefert (Protokollfehler). Die Frist ist unbekannt. Melde dich innerhalb von {hours} Stunden nach der Registrierung auf {url} mit E-Mail-Adresse und Passwort an, fordere den Bestätigungslink an, bestätige ihn und richte den Authenticator ein. Andernfalls wird das Konto gesperrt und mit allen gespeicherten Daten gelöscht. Registriere dich nicht erneut mit demselben Einladungscode."
     }
   },
   "options": {
@@ -124,6 +176,18 @@
     "update_available": {
       "title": "Powermesh Energie: Update verfügbar",
       "description": "Version {latest} der Integration ist verfügbar (installiert: {installed}). Aktualisiere sie in HACS."
+    },
+    "account_setup_required": {
+      "title": "powermesh.de: Kontoeinrichtung abschließen",
+      "description": "Das über Home Assistant registrierte Konto ist noch nicht vollständig eingerichtet. Melde dich bis {deadline} auf {url} mit E-Mail-Adresse und Passwort an, fordere den Bestätigungslink per E-Mail an, bestätige ihn und richte den Authenticator ein. Andernfalls wird das Konto gesperrt und anschließend mit allen gespeicherten Messwerten und Daten gelöscht. Diese Meldung verschwindet erst, wenn powermesh.de den Abschluss bestätigt.\n\n{warning}"
+    },
+    "account_setup_expired": {
+      "title": "powermesh.de: Konto nicht rechtzeitig eingerichtet",
+      "description": "Die Kontoeinrichtung wurde nicht bis {deadline} abgeschlossen. Das Konto ist gesperrt und wird mit allen gespeicherten Daten gelöscht. Es werden weder automatisch ein neues Konto noch ein neuer Schlüssel angelegt. Ausstehende Messwerte bleiben lokal, bis du den Eintrag entfernst. Entferne den Eintrag und richte die Integration mit einem neuen Einladungscode oder einem vorhandenen API-Schlüssel neu ein."
+    },
+    "account_status_unknown": {
+      "title": "powermesh.de: Kontostatus unbekannt",
+      "description": "Bei der Registrierung wurde ein API-Schlüssel ausgestellt, aber powermesh.de hat keinen gültigen Kontostatus gemeldet (Protokollfehler); eine Frist ist daher nicht bekannt. Schließe die Einrichtung so bald wie möglich auf {url} ab: Melde dich mit E-Mail-Adresse und Passwort an, fordere den Bestätigungslink an, bestätige ihn und richte den Authenticator ein. Nicht innerhalb der Registrierungsfrist eingerichtete Konten werden gesperrt und mit allen gespeicherten Daten gelöscht. Diese Meldung verschwindet, sobald powermesh.de den Kontostatus meldet."
     }
   },
   "selector": {

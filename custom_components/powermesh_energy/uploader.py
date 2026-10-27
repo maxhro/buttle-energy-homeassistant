@@ -19,6 +19,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .api import (
+    AccountState,
     PowermeshAuthError,
     PowermeshClient,
     PowermeshConnectionError,
@@ -28,11 +29,14 @@ from .api import (
     PowermeshRateLimitError,
     PowermeshRejectedError,
     encode_request,
+    parse_account,
     validate_status,
 )
 from .const import (
     API_MAJOR,
     CONF_ENTITIES,
+    CONF_ACCOUNT_STATUS_UNKNOWN,
+    CONF_SETUP_EXPIRES_AT,
     CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
     DEFAULT_UPLOAD_INTERVAL,
@@ -55,6 +59,7 @@ from .const import (
     STORAGE_VERSION,
     UPLOAD_INTERVAL,
     VERSION,
+    WEBSITE_URL,
 )
 from .metadata import entity_friendly_name, entity_metadata
 from .readings import build_reading, compatibility, is_api_reading
@@ -63,6 +68,30 @@ from .smoothing import Smoother, option_for
 _LOGGER = logging.getLogger(__name__)
 # How often finished smoothing windows are checked; shorter than the smallest window.
 SMOOTHING_TICK = timedelta(seconds=5)
+ISSUE_ACCOUNT_SETUP = "account_setup_required"
+ISSUE_ACCOUNT_EXPIRED = "account_setup_expired"
+ISSUE_ACCOUNT_UNKNOWN = "account_status_unknown"
+ACCOUNT_ISSUES = (ISSUE_ACCOUNT_SETUP, ISSUE_ACCOUNT_EXPIRED, ISSUE_ACCOUNT_UNKNOWN)
+
+
+def format_deadline(expires_at: int | None) -> str:
+    """Local, human-readable setup deadline."""
+    if expires_at is None:
+        return "?"
+    try:
+        moment = dt_util.as_local(dt_util.utc_from_timestamp(expires_at))
+    except (OverflowError, OSError, ValueError):
+        return "?"
+    return moment.strftime("%d.%m.%Y %H:%M %Z").strip()
+
+
+def account_issue_placeholders(account: AccountState | None) -> dict[str, str]:
+    """Translation placeholders for setup warnings; never credentials."""
+    return {
+        "deadline": format_deadline(account.setup_expires_at if account else None),
+        "warning": (account.warning or "") if account else "",
+        "url": WEBSITE_URL,
+    }
 
 
 class PowermeshUploader:
@@ -103,6 +132,7 @@ class PowermeshUploader:
         self._stopping = False
         self._upload_task: Any = None
         self._active_upload: asyncio.Task[Any] | None = None
+        self.account: AccountState | None = None
 
     @property
     def pending(self) -> int:
@@ -127,6 +157,8 @@ class PowermeshUploader:
     async def async_start(self) -> None:
         """Restore the buffer, record current values and start listening."""
         stored = await self._store.async_load()
+        self.account = self._initial_account(stored)
+        self._refresh_account_issue()
         if stored:
             readings = stored.get("readings", [])
             inflight = stored.get("inflight")
@@ -194,6 +226,66 @@ class PowermeshUploader:
     async def _async_initial(self) -> None:
         await self.async_upload()
 
+    def _initial_account(self, stored: Any) -> AccountState | None:
+        saved = AccountState.from_dict(stored.get("account")) if isinstance(stored, dict) else None
+        if saved is not None:
+            return saved
+        seed = self.entry.data.get(CONF_SETUP_EXPIRES_AT)
+        if type(seed) is int and seed > 0:
+            return AccountState(True, seed)
+        if self.entry.data.get(CONF_ACCOUNT_STATUS_UNKNOWN) is True:
+            return AccountState(True)
+        return None
+
+    @callback
+    def _apply_account(self, account: AccountState | None) -> None:
+        """Take over a server-reported setup status; absent status changes nothing."""
+        if account is None:
+            return
+        changed = account != self.account
+        self.account = account
+        self._refresh_account_issue()
+        if changed and self._legacy_buffer is None:
+            self._store.async_delay_save(self._data, 1)
+
+    @callback
+    def _refresh_account_issue(self) -> None:
+        """Keep the setup warning visible until the server confirms completion."""
+        account = self.account
+        if account is None:
+            return
+        issue = None
+        if account.setup_required:
+            expires = account.setup_expires_at
+            if expires is None:
+                issue = ISSUE_ACCOUNT_UNKNOWN
+            elif dt_util.utcnow().timestamp() >= expires:
+                # An expired key gets an ordinary auth error; the stored server
+                # deadline explains it.
+                issue = ISSUE_ACCOUNT_EXPIRED
+            else:
+                issue = ISSUE_ACCOUNT_SETUP
+        for other in ACCOUNT_ISSUES:
+            if other != issue:
+                ir.async_delete_issue(self.hass, DOMAIN, f"{other}_{self.entry.entry_id}")
+        if issue is None:
+            return
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            f"{issue}_{self.entry.entry_id}",
+            is_fixable=False,
+            is_persistent=True,
+            severity=ir.IssueSeverity.ERROR if issue == ISSUE_ACCOUNT_EXPIRED else ir.IssueSeverity.WARNING,
+            translation_key=issue,
+            translation_placeholders=account_issue_placeholders(account),
+        )
+
+    @callback
+    def _account_auth_failed(self, err: PowermeshAuthError) -> None:
+        # No dedicated expiry code exists; re-evaluate the remembered server deadline.
+        self._refresh_account_issue()
+
     async def async_check_version(self) -> bool:
         """Compare versions with the server; pause on incompatibility."""
         try:
@@ -204,6 +296,7 @@ class PowermeshUploader:
         except PowermeshAuthError as err:
             self._paused = True
             self._set_error(STATUS_AUTH_FAILED, err.code)
+            self._account_auth_failed(err)
             self.entry.async_start_reauth(self.hass)
             self._notify()
             return False
@@ -222,6 +315,7 @@ class PowermeshUploader:
         except PowermeshOutdatedError as err:
             self._block(STATUS_API_INCOMPATIBLE, err.code)
             return False
+        self._apply_account(parse_account(server))
         self.server_release = server.get("api_release") if isinstance(server.get("api_release"), str) else None
         problem, latest = compatibility(server, VERSION, API_MAJOR, MIN_API_RELEASE)
         if problem is not None:
@@ -318,6 +412,7 @@ class PowermeshUploader:
             "readings": self._buffer,
             "owner": self._buffer_owner,
             "inflight": self._inflight,
+            "account": self.account.as_dict() if self.account else None,
         })
 
     @callback
@@ -389,6 +484,8 @@ class PowermeshUploader:
             self._record(new_state.entity_id, new_state.state, new_state.attributes, new_state.last_updated)
 
     async def _handle_interval(self, _now: datetime) -> None:
+        if self.account is not None and self.account.setup_required:
+            self._refresh_account_issue()
         await self.async_upload()
 
     async def _handle_stop(self, _event: Event) -> None:
@@ -456,6 +553,7 @@ class PowermeshUploader:
             except PowermeshAuthError as err:
                 self._paused = True
                 self._set_error(STATUS_AUTH_FAILED, err.code)
+                self._account_auth_failed(err)
                 self.entry.async_start_reauth(self.hass)
                 return
             except PowermeshForbiddenError as err:
@@ -474,6 +572,7 @@ class PowermeshUploader:
                 self._block(STATUS_REJECTED, err.code)
                 return
             self._inflight = None
+            self._apply_account(result.account)
             await self._store.async_save(self._data())
             self.accepted_total += result.accepted
             self.last_upload = dt_util.utcnow()

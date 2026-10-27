@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 import re
@@ -15,14 +16,19 @@ from .const import (
     API_MAJOR,
     CLIENT_ID,
     DEFAULT_URL,
+    ENERGY_CONSENT_VERSION,
     MAX_BODY_BYTES,
     MAX_READINGS_PER_REQUEST,
     MIN_API_RELEASE,
+    REGISTRATION_CONSENT_VERSION,
+    REGISTRATION_PATH,
     REQUEST_TIMEOUT_SECONDS,
 )
 from .readings import is_api_reading, parse_version
 
 API_KEY_PATTERN = re.compile(r"pme_[a-f0-9]{16}_[a-f0-9]{64}")
+MAX_WARNING_LENGTH = 500
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]+")
 
 
 class PowermeshError(Exception):
@@ -66,6 +72,38 @@ class PowermeshRejectedError(PowermeshError):
         self.body = body
 
 
+class PowermeshRegistrationError(PowermeshError):
+    """Registration failed; ``uncertain`` means the account may nevertheless exist."""
+
+    def __init__(self, code: str, status: int | None = None, *, uncertain: bool = False) -> None:
+        super().__init__(code, status)
+        self.uncertain = uncertain
+
+
+@dataclass(frozen=True, slots=True)
+class AccountState:
+    """Website setup status of the account behind an API key."""
+
+    setup_required: bool
+    setup_expires_at: int | None = None
+    warning: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Storage representation (contains no credentials)."""
+        return {
+            "setup_required": self.setup_required,
+            "setup_expires_at": self.setup_expires_at,
+            "warning": self.warning,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Any) -> AccountState | None:
+        """Restore a stored state; None if absent or malformed."""
+        if not isinstance(value, Mapping):
+            return None
+        return parse_account({"account": value})
+
+
 @dataclass(slots=True)
 class UploadResult:
     """Server-confirmed outcome of an upload."""
@@ -73,6 +111,43 @@ class UploadResult:
     accepted: int
     duplicates: int
     remaining_requests: int | None = None
+    account: AccountState | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Registration:
+    """Result of a successful one-time registration."""
+
+    api_key: str
+    # None: the service issued a key but its account status was malformed.
+    account: AccountState | None
+
+    def __repr__(self) -> str:
+        return f"Registration(key_id={self.api_key.split('_', 2)[1]!r}, account={self.account!r})"
+
+
+def sanitize_warning(value: Any) -> str | None:
+    """Return a bounded display text; drop anything resembling an address or key."""
+    if not isinstance(value, str):
+        return None
+    text = " ".join(_CONTROL_CHARACTERS.sub(" ", value).split())
+    if not text or "@" in text or "pme_" in text.casefold():
+        return None
+    return text[:MAX_WARNING_LENGTH]
+
+
+def parse_account(body: Any) -> AccountState | None:
+    """Parse the optional account setup status of a response body."""
+    account = body.get("account") if isinstance(body, Mapping) else None
+    if not isinstance(account, Mapping):
+        return None
+    required = account.get("setup_required")
+    expires = account.get("setup_expires_at")
+    if required is False:
+        return AccountState(False)
+    if required is True and type(expires) is int and expires > 0:
+        return AccountState(True, expires, sanitize_warning(account.get("warning")))
+    return None
 
 
 def validate_connection(api_key: str) -> None:
@@ -146,7 +221,7 @@ class PowermeshClient:
             raise PowermeshConnectionError("invalid_acknowledgement")
         remaining_header = headers.get("X-RateLimit-Remaining")
         remaining = int(remaining_header) if remaining_header and remaining_header.isdigit() else None
-        return UploadResult(accepted, duplicates, remaining)
+        return UploadResult(accepted, duplicates, remaining, parse_account(body))
 
     async def _request(
         self, method: str, path: str, payload: dict[str, Any] | None = None
@@ -216,6 +291,82 @@ class PowermeshClient:
         if status in {400, 413, 415, 422}:
             raise PowermeshRejectedError(code, status, body if isinstance(body, dict) else None)
         raise PowermeshConnectionError(code, status)
+
+
+async def register_account(
+    session: aiohttp.ClientSession, *, email: str, password: str, invitation_code: str
+) -> Registration:
+    """Create a new account with a one-time invitation; never retried automatically.
+
+    Credentials are only sent to the fixed production service. Errors never carry
+    the submitted values.
+    """
+    try:
+        encoded = encode_request({
+            "email": email,
+            "password": password,
+            "invitation_code": invitation_code,
+            "consent_version": REGISTRATION_CONSENT_VERSION,
+            "consent_privacy": True,
+            "consent_terms": True,
+            "energy_consent_version": ENERGY_CONSENT_VERSION,
+            "energy_consent": True,
+        })
+    except PowermeshRejectedError:
+        raise PowermeshRegistrationError("invalid_registration") from None
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "X-Powermesh-Client": CLIENT_ID,
+        "User-Agent": f"powermesh-energy-{CLIENT_ID}",
+    }
+    try:
+        async with session.request(
+            "POST",
+            DEFAULT_URL + REGISTRATION_PATH,
+            data=encoded,
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS),
+            allow_redirects=False,
+        ) as response:
+            status = response.status
+            raw = await response.content.read(MAX_BODY_BYTES + 1)
+    except aiohttp.ClientConnectorError:
+        # No connection was established, so the request was never sent.
+        raise PowermeshRegistrationError("cannot_connect") from None
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+        raise PowermeshRegistrationError("registration_uncertain", uncertain=True) from None
+
+    body: Any = None
+    if len(raw) <= MAX_BODY_BYTES:
+        try:
+            body = json.loads(raw) if raw else None
+        except (ValueError, UnicodeError):
+            body = None
+
+    if status == 201 and isinstance(body, dict):
+        api_key = body.get("api_key")
+        if isinstance(api_key, str) and API_KEY_PATTERN.fullmatch(api_key):
+            # Keep the one-time key even if the status block is malformed.
+            return Registration(api_key, parse_account(body))
+    if 200 <= status < 300 or status >= 500 or len(raw) > MAX_BODY_BYTES:
+        raise PowermeshRegistrationError("registration_uncertain", status, uncertain=True)
+
+    error = body.get("error") if isinstance(body, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    if status == 422:
+        raise PowermeshRegistrationError("invalid_registration", status)
+    if status == 403 and code == "invitation_invalid":
+        raise PowermeshRegistrationError("invitation_invalid", status)
+    if status == 409:
+        raise PowermeshRegistrationError("account_exists", status)
+    if status == 429:
+        raise PowermeshRegistrationError("registration_rate_limited", status)
+    if status == 426:
+        raise PowermeshRegistrationError("update_required", status)
+    if status in {404, 405}:
+        raise PowermeshRegistrationError("registration_unavailable", status)
+    raise PowermeshRegistrationError("registration_rejected", status)
 
 
 def validate_status(body: dict[str, Any]) -> None:

@@ -28,6 +28,8 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Powerme
         "smoothing": uploader.smoothing,
         "dashboard_suggestion": suggestion,
         "dashboard_skipped": skipped,
+        "account_setup_required": uploader.account.setup_required if uploader.account else None,
+        "account_setup_expires_at": uploader.account.setup_expires_at if uploader.account else None,
         "status": uploader.status,
         "last_error": uploader.last_error,
         "pending": uploader.pending,

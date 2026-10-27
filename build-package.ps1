@@ -11,11 +11,11 @@ if ($DryRun -eq $BuildPackage) { throw 'Specify exactly one of -DryRun or -Build
 $root = $PSScriptRoot
 $component = Join-Path $root 'custom_components/powermesh_energy'
 $manifest = Get-Content -LiteralPath (Join-Path $component 'manifest.json') -Raw | ConvertFrom-Json
-if ($manifest.domain -ne 'powermesh_energy' -or $manifest.version -ne '0.1.0') {
-    throw 'Expected the powermesh_energy 0.1.0 new-install baseline.'
+if ($manifest.domain -ne 'powermesh_energy' -or $manifest.version -ne '0.2.0') {
+    throw 'Expected the powermesh_energy 0.2.0 baseline.'
 }
 $const = Get-Content -LiteralPath (Join-Path $component 'const.py') -Raw
-if ($const -notmatch '(?m)^VERSION:\s*Final\s*=\s*"0\.1\.0"\s*$') { throw 'manifest.json and const.py versions do not agree.' }
+if ($const -notmatch '(?m)^VERSION:\s*Final\s*=\s*"0\.2\.0"\s*$') { throw 'manifest.json and const.py versions do not agree.' }
 $files = [System.Collections.Generic.List[string]]::new()
 foreach ($directory in @((Join-Path $root 'custom_components'), $component)) {
     if ((Get-Item -LiteralPath $directory).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Symbolic links are not allowed in component inputs.' }

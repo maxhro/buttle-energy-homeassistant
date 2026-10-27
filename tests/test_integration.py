@@ -49,6 +49,13 @@ def reading(value=1):
     }
 
 
+async def start_key_flow(hass):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["api_key", "register"]
+    return await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "api_key"})
+
+
 def make_uploader(hass):
     entry = MockConfigEntry(domain=DOMAIN, data=CONNECTION, options={
         CONF_ENTITIES: ["sensor.grid_import"], CONF_SMOOTHING: {"sensor.grid_import": "none"},
@@ -70,7 +77,7 @@ async def test_config_flow_and_smoothing(hass):
     hass.states.async_set("sensor.grid_import", "10", ENERGY)
     with patch("custom_components.powermesh_energy.config_flow.PowermeshClient") as client:
         client.return_value.status = AsyncMock(return_value=STATUS)
-        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await start_key_flow(hass)
         assert result["type"] is FlowResultType.FORM
         assert CONF_API_KEY in result["data_schema"].schema
         result = await hass.config_entries.flow.async_configure(result["flow_id"], CONNECTION)
@@ -96,7 +103,7 @@ async def test_config_flow_allows_numeric_temperature_sensor(hass):
     )
     with patch("custom_components.powermesh_energy.config_flow.PowermeshClient") as client:
         client.return_value.status = AsyncMock(return_value=STATUS)
-        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await start_key_flow(hass)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], CONNECTION)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_ENTITIES: ["sensor.room_temperature"]}
@@ -112,7 +119,7 @@ async def test_config_flow_allows_numeric_temperature_sensor(hass):
 async def test_config_errors(hass, error, expected):
     with patch("custom_components.powermesh_energy.config_flow.PowermeshClient") as client:
         client.return_value.status = AsyncMock(side_effect=error)
-        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await start_key_flow(hass)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], CONNECTION)
         assert result["errors"] == {"base": expected}
 

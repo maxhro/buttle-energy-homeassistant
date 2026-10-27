@@ -97,7 +97,7 @@ async def test_status_uses_fixed_tls_service_and_client_header():
     assert args == ("GET", "https://api.powermesh.de/api/v2/status")
     assert kwargs["allow_redirects"] is False
     assert kwargs["headers"]["Authorization"] == f"Bearer {API_KEY}"
-    assert kwargs["headers"]["X-Powermesh-Client"] == CLIENT_ID == "homeassistant/0.1.0"
+    assert kwargs["headers"]["X-Powermesh-Client"] == CLIENT_ID == "homeassistant/0.2.0"
 
 
 async def test_status_rejects_mismatched_api_version_header():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -31,22 +32,55 @@ from .api import (
     PowermeshForbiddenError,
     PowermeshOutdatedError,
     PowermeshRateLimitError,
+    PowermeshRegistrationError,
+    Registration,
+    register_account,
     validate_connection,
     validate_status,
 )
 from .const import (
+    ACCOUNT_SETUP_HOURS,
+    CONF_ACCOUNT_STATUS_UNKNOWN,
     CONF_API_KEY,
     CONF_ENTITIES,
+    CONF_SETUP_EXPIRES_AT,
     CONF_SMOOTHING,
     CONF_UPLOAD_INTERVAL,
     CONF_USE_SUGGESTION,
     DEFAULT_UPLOAD_INTERVAL,
     DOMAIN,
     INTERVAL_OPTIONS,
+    PRIVACY_URL,
+    TERMS_URL,
+    WEBSITE_URL,
 )
 from .energy_dashboard import async_suggestion
 from .readings import ENTITY_ID_PATTERN
 from .smoothing import OPTIONS as SMOOTHING_OPTIONS, option_for
+from .uploader import account_issue_placeholders
+
+CONF_EMAIL = "email"
+CONF_PASSWORD = "password"
+CONF_PASSWORD_CONFIRM = "password_confirm"
+CONF_INVITATION_CODE = "invitation_code"
+CONF_CONSENT_PRIVACY = "consent_privacy"
+CONF_CONSENT_TERMS = "consent_terms"
+CONF_CONSENT_STORAGE = "consent_storage"
+CONSENT_FIELDS = (CONF_CONSENT_PRIVACY, CONF_CONSENT_TERMS, CONF_CONSENT_STORAGE)
+EMAIL_PATTERN = re.compile(r"[^@\s]{1,64}@[^@\s]+\.[^@\s]+")
+MAX_EMAIL_LENGTH = 254
+MAX_PASSWORD_LENGTH = 4096
+MAX_INVITATION_LENGTH = 256
+REGISTRATION_ERRORS = frozenset({
+    "account_exists",
+    "cannot_connect",
+    "invalid_registration",
+    "invitation_invalid",
+    "registration_rate_limited",
+    "registration_rejected",
+    "registration_unavailable",
+    "update_required",
+})
 
 REASONS_DE = {
     "external_statistic": "externe Statistik, keine Entität",
@@ -90,6 +124,40 @@ def _connection_schema(data: Mapping[str, Any]) -> vol.Schema:
             TextSelectorConfig(type=TextSelectorType.PASSWORD)
         ),
     })
+
+
+def _consent_schema() -> vol.Schema:
+    return vol.Schema({vol.Required(field, default=False): BooleanSelector() for field in CONSENT_FIELDS})
+
+
+def _account_schema(email: str) -> vol.Schema:
+    # Password and invitation code are never prefilled.
+    return vol.Schema({
+        vol.Required(CONF_EMAIL, default=email): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.EMAIL, autocomplete="email")
+        ),
+        vol.Required(CONF_PASSWORD): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="new-password")
+        ),
+        vol.Required(CONF_PASSWORD_CONFIRM): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="new-password")
+        ),
+        vol.Required(CONF_INVITATION_CODE): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="off")
+        ),
+    })
+
+
+def _account_errors(email: str, password: Any, confirm: Any, code: str) -> dict[str, str]:
+    if len(email) > MAX_EMAIL_LENGTH or EMAIL_PATTERN.fullmatch(email) is None:
+        return {CONF_EMAIL: "invalid_email"}
+    if not isinstance(password, str) or not password or len(password) > MAX_PASSWORD_LENGTH:
+        return {CONF_PASSWORD: "password_required"}
+    if password != confirm:
+        return {CONF_PASSWORD_CONFIRM: "password_mismatch"}
+    if not code or len(code) > MAX_INVITATION_LENGTH:
+        return {CONF_INVITATION_CODE: "invitation_required"}
+    return {}
 
 
 def _entity_schema(default_entities: list[str], default_interval: str = DEFAULT_UPLOAD_INTERVAL) -> vol.Schema:
@@ -143,15 +211,22 @@ def _incompatible(hass: HomeAssistant, entities: list[str]) -> list[str]:
 
 
 class PowermeshConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Set up a powermesh.de account with a personal API key."""
+    """Set up powermesh.de with a personal API key or a new invited account."""
 
     VERSION = 1
 
     def __init__(self) -> None:
         self._connection: dict[str, Any] = {}
         self._options: dict[str, Any] = {}
+        self._registering = False
+        self._registration_in_progress = False
+        self._registration_sent = False
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Choose between an existing API key and a new account."""
+        return self.async_show_menu(step_id="user", menu_options=["api_key", "register"])
+
+    async def async_step_api_key(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Ask for a personal API key."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -163,9 +238,97 @@ class PowermeshConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._connection = {CONF_API_KEY: api_key}
                 return await self.async_step_entities()
         return self.async_show_form(
-            step_id="user",
+            step_id="api_key",
             data_schema=_connection_schema(user_input or {}),
             errors=errors,
+        )
+
+    async def async_step_register(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Separate, explicit confirmations before a new account is requested."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = {field: "consent_missing" for field in CONSENT_FIELDS if user_input.get(field) is not True}
+            if not errors:
+                self._registering = True
+                return await self.async_step_entities()
+        return self.async_show_form(
+            step_id="register",
+            data_schema=_consent_schema(),
+            errors=errors,
+            description_placeholders={
+                "privacy_url": PRIVACY_URL,
+                "terms_url": TERMS_URL,
+                "hours": str(ACCOUNT_SETUP_HOURS),
+            },
+        )
+
+    async def async_step_register_account(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Send the single registration request and keep the issued key at once."""
+        if self._registration_sent:
+            return self.async_abort(reason="registration_uncertain")
+        if not self._registering or CONF_SMOOTHING not in self._options:
+            return self.async_abort(reason="registration_incomplete")
+        errors: dict[str, str] = {}
+        email = ""
+        if user_input is not None:
+            email = str(user_input.get(CONF_EMAIL, "")).strip()
+            code = str(user_input.get(CONF_INVITATION_CODE, "")).strip()
+            errors = _account_errors(
+                email, user_input.get(CONF_PASSWORD), user_input.get(CONF_PASSWORD_CONFIRM), code
+            )
+            if not errors and self._registration_in_progress:
+                errors = {"base": "registration_in_progress"}
+            if not errors:
+                self._registration_in_progress = True
+                try:
+                    registration = await register_account(
+                        async_get_clientsession(self.hass),
+                        email=email,
+                        password=user_input[CONF_PASSWORD],
+                        invitation_code=code,
+                    )
+                except PowermeshRegistrationError as err:
+                    if err.uncertain:
+                        self._registration_sent = True
+                        return self.async_abort(reason="registration_uncertain")
+                    errors = {"base": err.code if err.code in REGISTRATION_ERRORS else "registration_rejected"}
+                except Exception:  # noqa: BLE001 - never resubmit after an unknown outcome
+                    self._registration_sent = True
+                    return self.async_abort(reason="registration_uncertain")
+                else:
+                    self._registration_sent = True
+                    return await self._async_create_registered_entry(registration)
+                finally:
+                    self._registration_in_progress = False
+        return self.async_show_form(
+            step_id="register_account",
+            data_schema=_account_schema(email),
+            errors=errors,
+            description_placeholders={"url": WEBSITE_URL, "hours": str(ACCOUNT_SETUP_HOURS)},
+        )
+
+    async def _async_create_registered_entry(self, registration: Registration) -> ConfigFlowResult:
+        account = registration.account
+        await self.async_set_unique_id(registration.api_key.split("_", 2)[1], raise_on_progress=False)
+        data: dict[str, Any] = {CONF_API_KEY: registration.api_key}
+        if account is None:
+            # Protocol error: keep the one-time key, report it, never invent a deadline.
+            data[CONF_ACCOUNT_STATUS_UNKNOWN] = True
+            return self.async_create_entry(
+                title="Powermesh Energie",
+                data=data,
+                options=self._options,
+                description="account_status_unknown",
+                description_placeholders={"url": WEBSITE_URL, "hours": str(ACCOUNT_SETUP_HOURS)},
+            )
+        if account.setup_required and account.setup_expires_at is not None:
+            data[CONF_SETUP_EXPIRES_AT] = account.setup_expires_at
+        return self.async_create_entry(
+            title="Powermesh Energie",
+            data=data,
+            options=self._options,
+            description="account_setup_required" if account.setup_required else None,
+            description_placeholders=account_issue_placeholders(account),
         )
 
     async def async_step_entities(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -202,6 +365,9 @@ class PowermeshConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_smoothing(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Choose the smoothing per entity (default: 1 min mean)."""
         entities = self._options[CONF_ENTITIES]
+        if user_input is not None and self._registering:
+            self._options = self._options | {CONF_SMOOTHING: _smoothing_choices(entities, user_input)}
+            return await self.async_step_register_account()
         if user_input is not None:
             return self.async_create_entry(
                 title="Powermesh Energie",
