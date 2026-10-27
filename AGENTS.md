@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-- Version `0.2.0` (requires service API release `0.2.0`): selected numeric
+- Version `0.5.0` (requires service API release `0.2.0`): selected numeric
   sensor readings, optional allowlisted Home Assistant metadata, smoothing and
   bounded offline buffering for powermesh.de.
   Smart-home comparison and improvement potential are **in Entwicklung**,

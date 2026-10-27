@@ -89,11 +89,12 @@ verwende dann einen API-Schlüssel.
    wenn powermesh.de den Abschluss bestätigt.
 
 Wird die Einrichtung nicht rechtzeitig abgeschlossen, sperrt powermesh.de das
-Konto zur Frist; eine regelmäßige Bereinigung löscht danach das Konto mit allen
-gespeicherten Messwerten, Metadaten und zugehörigen Daten. Home Assistant zeigt
-dies als Fehlermeldung an und legt weder ein neues Konto noch einen neuen
-Schlüssel automatisch an. Ausstehende Messwerte bleiben lokal, bis du den Eintrag
-entfernst.
+Konto zur Frist. Die automatische Löschung erfolgt erst durch einen eingerichteten
+Bereinigungslauf; ein solcher Lauf ist für den Produktivbetrieb derzeit nicht
+eingerichtet. Eine automatische Kontolöschung ist daher nicht garantiert.
+Home Assistant zeigt die Sperre als Fehlermeldung an und legt weder ein neues
+Konto noch einen neuen Schlüssel automatisch an. Ausstehende Messwerte bleiben
+lokal, bis du den Eintrag entfernst.
 
 Liefert powermesh.de nach der Registrierung zwar einen API-Schlüssel, aber keinen
 gültigen Kontostatus, wird der Schlüssel trotzdem gespeichert und ein
@@ -128,9 +129,12 @@ Status, ausstehende Werte und letzte Übertragung
 siehst du an den Diagnose-Sensoren. Ist ein Update der Integration nötig,
 erscheint eine Reparaturmeldung in Home Assistant.
 
+Für Updates über HACS öffne **HACS → Integrationen → Powermesh Energie**,
+installiere die angebotene neue Version und starte Home Assistant danach neu.
+
 ## Versionen
 
-Diese Integration ist ein Entwicklungsstand in Version **0.2.0**. Sie wird
+Diese Integration ist ein Entwicklungsstand in Version **0.5.0**. Sie wird
 unabhängig von der Website und dem Dienst versioniert. Vergleiche und Auswertungen
 sind nicht implementiert. Halte die Integration über HACS aktuell.
 
@@ -145,7 +149,7 @@ pwsh -NoProfile -File ./build-package.ps1 -DryRun
 pwsh -NoProfile -File ./build-package.ps1 -BuildPackage
 ```
 
-Das Archiv `dist/powermesh-energy-homeassistant-0.2.0.zip` enthält
+Das Archiv `dist/powermesh-energy-homeassistant-0.5.0.zip` enthält
 `custom_components/powermesh_energy` und die Lizenz, keine Testumgebung, Caches
 oder Zugangsdaten. Vorhandene Archive werden nicht überschrieben.
 Den enthaltenen Komponentenordner in das Konfigurationsverzeichnis von

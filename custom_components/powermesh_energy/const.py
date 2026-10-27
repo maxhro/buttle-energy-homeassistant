@@ -7,7 +7,7 @@ from typing import Final
 
 DOMAIN: Final = "powermesh_energy"
 # Keep in sync with manifest.json.
-VERSION: Final = "0.2.0"
+VERSION: Final = "0.5.0"
 API_RELEASE: Final = "0.2.0"
 API_MAJOR: Final = 2
 # Account setup status is part of every status/upload response since 0.2.0.
