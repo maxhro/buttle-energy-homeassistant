@@ -30,6 +30,7 @@ from .api import (
     PowermeshRejectedError,
     encode_request,
     parse_account,
+    parse_buffer_limit,
     validate_status,
 )
 from .const import (
@@ -43,10 +44,11 @@ from .const import (
     DOMAIN,
     INTERVAL_MAP,
     INTERVAL_OPTIONS,
-    MAX_BUFFERED_READINGS,
     MAX_READINGS_PER_REQUEST,
     MIN_API_RELEASE,
     STATUS_API_INCOMPATIBLE,
+    STATUS_BUFFER_FULL,
+    STATUS_LIMITS_UNKNOWN,
     STATUS_AUTH_FAILED,
     STATUS_CONSENT_REQUIRED,
     STATUS_OFFLINE,
@@ -133,6 +135,8 @@ class PowermeshUploader:
         self._upload_task: Any = None
         self._active_upload: asyncio.Task[Any] | None = None
         self.account: AccountState | None = None
+        self.buffer_limit: int | None = None
+        self._buffer_error: str | None = None
 
     @property
     def pending(self) -> int:
@@ -186,6 +190,18 @@ class PowermeshUploader:
                 self._block(STATUS_REJECTED, "invalid_local_buffer")
                 return
             self._buffer_owner = stored.get("owner")
+            if self._buffer_owner == self.client.key_id:
+                try:
+                    self.buffer_limit = parse_buffer_limit(stored.get("limits"))
+                except PowermeshOutdatedError:
+                    self._buffer_problem(STATUS_LIMITS_UNKNOWN)
+            self.dropped_total = (
+                stored["dropped_total"]
+                if type(stored.get("dropped_total")) is int and stored["dropped_total"] >= 0
+                else 0
+            )
+            if stored.get("buffer_error") in (STATUS_BUFFER_FULL, STATUS_LIMITS_UNKNOWN):
+                self._buffer_problem(stored["buffer_error"])
             self._inflight = inflight
             if self._inflight is not None and (
                 not isinstance(self._inflight, dict)
@@ -197,9 +213,10 @@ class PowermeshUploader:
                 self._blocked_buffer_count = len(all_readings)
                 self._block(STATUS_REJECTED, "invalid_local_buffer")
                 return
-            for reading in readings:
-                if reading.get("entity_id") in self.entities:
-                    self._append(reading)
+            # Existing data must survive upgrades and server-side limit reductions.
+            self._replace_buffer([
+                reading for reading in readings if reading.get("entity_id") in self.entities
+            ])
         await self.async_check_version()
         if self._paused:
             return
@@ -309,6 +326,8 @@ class PowermeshUploader:
             return False
         except PowermeshError as err:
             self._set_error(STATUS_OFFLINE, err.code)
+            if self.buffer_limit is None:
+                self._buffer_problem(STATUS_LIMITS_UNKNOWN)
             return False
         try:
             validate_status(server)
@@ -328,7 +347,10 @@ class PowermeshUploader:
             self._block(STATUS_REJECTED, "buffer_owner_changed")
             return False
         first_buffer = not self.pending
+        self.buffer_limit = parse_buffer_limit(server["limits"])
         self._buffer_owner = self.client.key_id
+        if self.pending > self.buffer_limit:
+            self._buffer_problem(STATUS_BUFFER_FULL)
         self.latest_version = latest if latest != VERSION else None
         await self._store.async_save(self._data())
         if first_buffer:
@@ -413,22 +435,46 @@ class PowermeshUploader:
             "owner": self._buffer_owner,
             "inflight": self._inflight,
             "account": self.account.as_dict() if self.account else None,
+            "limits": {"buffer_limit_readings": self.buffer_limit},
+            "buffer_error": self._buffer_error,
+            "dropped_total": self.dropped_total,
         })
 
     @callback
     def _append(self, reading: dict[str, Any]) -> None:
         # Newer values within the same second replace older ones.
         key = (reading["entity_id"], reading["timestamp"])
-        if (position := self._index.get(key)) is not None:
+        if self.buffer_limit is not None and (position := self._index.get(key)) is not None:
             self._buffer[position] = reading
+            return
+        if self.buffer_limit is None or self.pending >= self.buffer_limit:
+            self.dropped_total += 1
+            self._buffer_problem(
+                STATUS_LIMITS_UNKNOWN if self.buffer_limit is None else STATUS_BUFFER_FULL
+            )
+            _LOGGER.error(
+                "Discarded new reading: %s (pending=%s, limit=%s, dropped_total=%s)",
+                self._buffer_error, self.pending, self.buffer_limit, self.dropped_total,
+            )
             return
         self._index[key] = len(self._buffer)
         self._buffer.append(reading)
-        if self.pending > MAX_BUFFERED_READINGS:
-            overflow = self.pending - MAX_BUFFERED_READINGS
-            self._replace_buffer(self._buffer[overflow:])
-            self.dropped_total += overflow
-            _LOGGER.warning("Offline buffer full; dropped %s oldest readings", overflow)
+
+    @callback
+    def _buffer_problem(self, code: str) -> None:
+        self._buffer_error = code
+        self._set_error(code, code)
+        ir.async_create_issue(
+            self.hass, DOMAIN, f"buffer_limit_{self.entry.entry_id}",
+            is_fixable=False, is_persistent=True, severity=ir.IssueSeverity.ERROR,
+            translation_key="buffer_limit",
+        )
+        self._notify()
+
+    def _clear_buffer_problem(self) -> None:
+        if self.buffer_limit is not None and self.pending < self.buffer_limit:
+            self._buffer_error = None
+            ir.async_delete_issue(self.hass, DOMAIN, f"buffer_limit_{self.entry.entry_id}")
 
     def _replace_buffer(self, readings: list[dict[str, Any]]) -> None:
         self._buffer = readings
@@ -448,7 +494,10 @@ class PowermeshUploader:
             entity_id, state, safe_attributes, when, entity_metadata(self.hass, entity_id)
         )
         smoother = self._smoothers.get(entity_id)
-        if reading is None or smoother is None or self._buffer_owner is None or self._paused:
+        if reading is None or smoother is None or self._paused:
+            return
+        if self._buffer_owner is None or self.buffer_limit is None:
+            self._enqueue([reading])
             return
         self._enqueue(smoother.add(reading, when))
 
@@ -499,7 +548,7 @@ class PowermeshUploader:
         if self._retry_at is not None and dt_util.utcnow() < self._retry_at:
             return
         if not self.pending:
-            if self._buffer_owner is None:
+            if self._buffer_owner is None or self.buffer_limit is None:
                 await self.async_check_version()
             if not self.pending and self.status == STATUS_PENDING:
                 self.status = STATUS_OK
@@ -573,17 +622,20 @@ class PowermeshUploader:
                 return
             self._inflight = None
             self._apply_account(result.account)
+            self._clear_buffer_problem()
             await self._store.async_save(self._data())
             self.accepted_total += result.accepted
             self.last_upload = dt_util.utcnow()
-            self.last_error = None
-            self.status = STATUS_OK
+            self.last_error = self._buffer_error
+            self.status = self._buffer_error or STATUS_OK
             self._retry_at = None
             ir.async_delete_issue(self.hass, DOMAIN, f"consent_{self.entry.entry_id}")
             if result.remaining_requests == 0:
                 return
 
     def _set_error(self, status: str, code: str) -> None:
+        if self._buffer_error and status in (STATUS_OFFLINE, STATUS_RATE_LIMITED):
+            status = code = self._buffer_error
         self.status = status
         self.last_error = code
         _LOGGER.debug("Upload stopped: %s (%s)", status, code)

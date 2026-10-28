@@ -129,6 +129,8 @@
       "upload_status": {
         "name": "Upload status",
         "state": {
+          "buffer_full": "Buffer limit reached",
+          "limits_unknown": "Buffer limit unknown",
           "pending": "Pending",
           "ok": "OK",
           "offline": "Offline",
@@ -149,6 +151,10 @@
     }
   },
   "issues": {
+    "buffer_limit": {
+      "title": "Powermesh Energie: Reading buffer error",
+      "description": "The user-specific buffer limit has been reached or could not yet be retrieved. New readings are discarded, counted and logged; existing readings are retained. Check the connection to powermesh.de and the limit in your account. This error clears automatically after a successful upload leaves buffer space."
+    },
     "buffer_incompatible": {
       "title": "Powermesh Energie: pending readings need attention",
       "description": "A locally stored batch uses an older, incompatible format and was not sent or changed. Preserve any needed local data before removing and recreating the entry; removing it deletes the local buffer."

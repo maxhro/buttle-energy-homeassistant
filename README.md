@@ -122,9 +122,19 @@ Andernfalls fordere beim Betreiber einen neuen Code an.
 Die Integration sendet gesammelt in regelmäßigen Abständen und puffert bei
 Verbindungsproblemen lokal. Werte werden erst nach einer ausdrücklichen
 Speicherbestätigung aus dem Puffer entfernt. Bei einem Schlüsselwechsel werden
-ausstehende Werte nicht stillschweigend neu zugeordnet. Der lokale Puffer ist begrenzt; bei
-Überlauf werden die ältesten noch nicht gesendeten Werte verworfen und der Verlust
-sichtbar gezählt/protokolliert.
+ausstehende Werte nicht stillschweigend neu zugeordnet. Der lokale Puffer ist auf die
+für dein Benutzerkonto eingerichtete Messwertanzahl begrenzt (Standard: 5.000,
+sofern der Betreiber keinen anderen Default konfiguriert hat). Das zuletzt vom
+Dienst bestätigte Limit bleibt für denselben API-Schlüssel lokal gespeichert.
+Ohne bekanntes Limit werden keine neuen Messwerte gepuffert. Bei vollem Puffer
+bleiben vorhandene Werte erhalten; nur weitere neue Werte werden verworfen.
+Der Verlust wird gezählt und als Fehler im Home-Assistant-Protokoll gemeldet.
+Übertragungsstatus und Reparaturmeldung zeigen den Fehler an, bis nach einer
+erfolgreichen Übertragung wieder Platz frei ist. Wird das Limit unter den
+aktuellen Füllstand gesenkt, bleiben bereits gespeicherte Werte erhalten;
+neue Werte werden bis zum Abbau des Rückstaus nicht aufgenommen.
+Große Rückstände werden in mehrere größenbegrenzte Nachrichten aufgeteilt;
+das Anfragelimit des Dienstes bleibt dabei wirksam.
 Status, ausstehende Werte und letzte Übertragung
 siehst du an den Diagnose-Sensoren. Ist ein Update der Integration nötig,
 erscheint eine Reparaturmeldung in Home Assistant.
@@ -134,7 +144,8 @@ installiere die angebotene neue Version und starte Home Assistant danach neu.
 
 ## Versionen
 
-Diese Integration ist ein Entwicklungsstand in Version **0.5.0**. Sie wird
+Diese Integration ist ein Entwicklungsstand in Version **0.6.0** und benötigt
+einen entsprechend aktualisierten Dienst. Sie wird
 unabhängig von der Website und dem Dienst versioniert. Vergleiche und Auswertungen
 sind nicht implementiert. Halte die Integration über HACS aktuell.
 
@@ -149,7 +160,7 @@ pwsh -NoProfile -File ./build-package.ps1 -DryRun
 pwsh -NoProfile -File ./build-package.ps1 -BuildPackage
 ```
 
-Das Archiv `dist/powermesh-energy-homeassistant-0.5.0.zip` enthält
+Das Archiv `dist/powermesh-energy-homeassistant-0.6.0.zip` enthält
 `custom_components/powermesh_energy` und die Lizenz, keine Testumgebung, Caches
 oder Zugangsdaten. Vorhandene Archive werden nicht überschrieben.
 Den enthaltenen Komponentenordner in das Konfigurationsverzeichnis von

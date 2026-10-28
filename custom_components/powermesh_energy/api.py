@@ -200,6 +200,12 @@ class PowermeshClient:
         body, _ = await self._request("GET", "/api/v2/status")
         return body
 
+    async def limits(self) -> dict[str, Any]:
+        """Fetch the authenticated account's effective limits."""
+        body, _ = await self._request("GET", "/api/v2/limits")
+        parse_buffer_limit(body.get("limits"))
+        return body
+
     async def upload(self, readings: list[dict[str, Any]]) -> UploadResult:
         """Upload one batch and require an exact server acknowledgement."""
         if (
@@ -369,6 +375,14 @@ async def register_account(
     raise PowermeshRegistrationError("registration_rejected", status)
 
 
+def parse_buffer_limit(limits: Any) -> int:
+    """Require a bounded server-provided reading count, never a local default."""
+    value = limits.get("buffer_limit_readings") if isinstance(limits, dict) else None
+    if type(value) is not int or not 1 <= value <= 1_000_000:
+        raise PowermeshOutdatedError("invalid_buffer_limit")
+    return value
+
+
 def validate_status(body: dict[str, Any]) -> None:
     """Reject a status response from an incompatible or malformed service."""
     client = body.get("client")
@@ -395,3 +409,4 @@ def validate_status(body: dict[str, Any]) -> None:
     scopes = body.get("scopes")
     if not isinstance(scopes, list) or "readings:write" not in scopes:
         raise PowermeshForbiddenError("insufficient_scope", 403)
+    parse_buffer_limit(body["limits"])

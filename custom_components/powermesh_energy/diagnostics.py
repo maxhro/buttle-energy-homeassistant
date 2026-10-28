@@ -35,5 +35,6 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Powerme
         "pending": uploader.pending,
         "accepted_total": uploader.accepted_total,
         "dropped_total": uploader.dropped_total,
+        "buffer_limit_readings": uploader.buffer_limit,
         "last_upload": uploader.last_upload.isoformat() if uploader.last_upload else None,
     }

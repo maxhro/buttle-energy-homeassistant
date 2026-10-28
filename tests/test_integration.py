@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from datetime import timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant import config_entries
@@ -15,6 +15,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.powermesh_energy.api import (
     PowermeshAuthError, PowermeshClient, PowermeshConnectionError,
     PowermeshRejectedError, UploadResult,
+    encode_request,
 )
 from custom_components.powermesh_energy.const import (
     CONF_API_KEY as ENTRY_API_KEY,
@@ -22,7 +23,6 @@ from custom_components.powermesh_energy.const import (
     CONF_ENTITIES,
     CONF_SMOOTHING,
     API_RELEASE,
-    MAX_BUFFERED_READINGS,
 )
 from custom_components.powermesh_energy.uploader import PowermeshUploader
 from .conftest import ENERGY
@@ -33,7 +33,7 @@ CONNECTION = {ENTRY_API_KEY: API_KEY}
 STATUS = {
     "status": "ok", "api_version": 2, "api_release": API_RELEASE,
     "client": {"minimum": "0.1.0", "latest": "0.1.0"},
-    "limits": {"max_readings_per_request": 200, "max_body_bytes": 131072, "requests_per_minute": 100},
+    "limits": {"max_readings_per_request": 200, "max_body_bytes": 131072, "requests_per_minute": 100, "buffer_limit_readings": 5000},
     "retention_days": 365, "scopes": ["readings:write"],
 }
 
@@ -69,7 +69,9 @@ def make_uploader(hass):
     uploader = PowermeshUploader(hass, entry, client)
     entry.runtime_data = uploader
     uploader._store = AsyncMock()
+    uploader._store.async_delay_save = MagicMock()
     uploader._buffer_owner = client.key_id
+    uploader.buffer_limit = 5000
     return uploader, client, entry
 
 
@@ -205,13 +207,16 @@ async def test_permanent_rejection_keeps_batch_and_stops(hass):
 
 async def test_offline_buffer_drops_only_oldest_when_full(hass):
     uploader, _, _ = make_uploader(hass)
-    for index in range(MAX_BUFFERED_READINGS + 1):
+    uploader.buffer_limit = 3
+    for index in range(4):
         item = reading(index)
         item["entity_id"] = f"sensor.item_{index}"
         uploader._append(item)
-    assert uploader.pending == MAX_BUFFERED_READINGS
+    assert uploader.pending == 3
     assert uploader.dropped_total == 1
-    assert uploader._buffer[0]["entity_id"] == "sensor.item_1"
+    assert uploader._buffer[0]["entity_id"] == "sensor.item_0"
+    assert uploader._buffer[-1]["entity_id"] == "sensor.item_2"
+    assert uploader.status == "buffer_full"
 
 
 async def test_revoked_client_reauth_keeps_data(hass):
@@ -314,3 +319,178 @@ async def test_stop_cancels_active_upload_and_persists_same_batch(hass):
     assert task.cancelled()
     assert uploader._store.async_save.call_args.args[0]["inflight"] == batch
     assert uploader.pending == 1
+
+
+async def test_overflow_error_is_logged_persisted_and_cleared_after_upload(hass, caplog):
+    uploader, client, entry = make_uploader(hass)
+    uploader.buffer_limit = 1
+    client.status.return_value["limits"]["buffer_limit_readings"] = 1
+    first = reading(1)
+    uploader._append(first)
+    extra = reading(2) | {"entity_id": "sensor.extra"}
+    uploader._enqueue([extra])
+    assert uploader._buffer == [first]
+    assert uploader.status == "buffer_full"
+    assert "Discarded new reading" in caplog.text
+    assert "sensor.extra" not in caplog.text
+    assert uploader._data()["dropped_total"] == 1
+    assert uploader._data()["buffer_error"] == "buffer_full"
+    issue_id = f"buffer_limit_{entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id).severity is ir.IssueSeverity.ERROR
+    client.upload.side_effect = PowermeshConnectionError("timeout")
+    await uploader.async_upload()
+    assert uploader.status == "buffer_full"
+    client.upload.side_effect = None
+    uploader._retry_at = None
+    await uploader.async_upload()
+    assert uploader.status == "ok" and uploader.pending == 0
+    assert uploader.dropped_total == 1
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_full_buffer_counts_inflight_and_does_not_replace_oldest(hass):
+    uploader, client, _ = make_uploader(hass)
+    uploader.buffer_limit = 1
+    client.status.return_value["limits"]["buffer_limit_readings"] = 1
+    original = reading()
+    uploader._append(original)
+
+    async def upload(batch):
+        assert uploader.pending == 1 and uploader._buffer == []
+        uploader._append(reading(99))
+        assert uploader.pending == 1
+        assert uploader._inflight["readings"] == [original]
+        return UploadResult(1, 0)
+
+    client.upload.side_effect = upload
+    await uploader.async_upload()
+    assert uploader.pending == 0 and uploader.dropped_total == 1
+
+
+async def test_unknown_limit_discards_without_sampling_and_recovers(hass, caplog):
+    uploader, client, _ = make_uploader(hass)
+    uploader.buffer_limit = None
+    uploader._record("sensor.grid_import", "12", ENERGY, dt_util.utcnow())
+    assert uploader.pending == 0 and uploader.dropped_total == 1
+    assert uploader.status == "limits_unknown"
+    assert "Discarded new reading" in caplog.text
+    client.status.side_effect = PowermeshConnectionError("offline")
+    await uploader.async_upload()
+    assert uploader.status == "limits_unknown"
+    client.status.side_effect = None
+    hass.states.async_set("sensor.grid_import", "13", ENERGY)
+    await uploader.async_upload()
+    assert uploader.buffer_limit == 5000
+    assert uploader.status == "ok" and uploader.pending == 0
+    assert uploader.accepted_total == 1
+
+
+async def test_restart_offline_reuses_only_same_owner_limit(hass):
+    uploader, _, _ = make_uploader(hass)
+    uploader.buffer_limit = 2
+    uploader._append(reading())
+    stored = uploader._data()
+    replacement, client, _ = make_uploader(hass)
+    replacement.buffer_limit = None
+    replacement._store.async_load.return_value = stored
+    client.status.side_effect = PowermeshConnectionError("offline")
+    await replacement.async_start()
+    await hass.async_block_till_done()
+    assert replacement.buffer_limit == 2 and replacement.pending == 1
+    replacement._enqueue([reading(2) | {"entity_id": "sensor.second"}])
+    replacement._enqueue([reading(3) | {"entity_id": "sensor.third"}])
+    assert replacement.pending == 2 and replacement.dropped_total == 1
+    await replacement.async_stop()
+    other, other_client, _ = make_uploader(hass)
+    other.buffer_limit = None
+    other_client.key_id = "f" * 16
+    other_client.status.side_effect = PowermeshConnectionError("offline")
+    other._store.async_load.return_value = stored
+    await other.async_start()
+    await hass.async_block_till_done()
+    assert other.buffer_limit is None and other.pending == 1
+    other._enqueue([reading(4) | {"entity_id": "sensor.fourth"}])
+    assert other.pending == 1 and other.dropped_total == 1
+    await other.async_stop()
+
+
+async def test_limit_reduction_preserves_existing_readings(hass):
+    uploader, client, _ = make_uploader(hass)
+    for index in range(4):
+        uploader._append(reading(index) | {"entity_id": f"sensor.item_{index}"})
+    before = deepcopy(uploader._buffer)
+    client.status.return_value["limits"]["buffer_limit_readings"] = 2
+    assert await uploader.async_check_version()
+    assert uploader.buffer_limit == 2 and uploader._buffer == before
+    uploader._append(reading(5) | {"entity_id": "sensor.extra"})
+    assert uploader._buffer == before and uploader.dropped_total == 1
+
+
+async def test_restart_preserves_over_limit_buffer_and_loss_error(hass):
+    uploader, _, _ = make_uploader(hass)
+    for index in range(3):
+        uploader._append(reading(index) | {"timestamp": (dt_util.utcnow() + timedelta(seconds=index)).isoformat()})
+    uploader.buffer_limit = 1
+    uploader._enqueue([reading(99) | {"entity_id": "sensor.extra"}])
+    stored = uploader._data()
+    replacement, client, entry = make_uploader(hass)
+    replacement._store.async_load.return_value = stored
+    client.status.side_effect = PowermeshConnectionError("offline")
+    await replacement.async_start()
+    await hass.async_block_till_done()
+    assert replacement._buffer == stored["readings"]
+    assert replacement.pending == 3 and replacement.buffer_limit == 1
+    assert replacement.status == "buffer_full" and replacement.dropped_total == 1
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"buffer_limit_{entry.entry_id}")
+    await replacement.async_stop()
+
+
+async def test_first_start_offline_never_uses_local_buffer_default(hass, caplog):
+    uploader, client, _ = make_uploader(hass)
+    uploader.buffer_limit = None
+    uploader._buffer_owner = None
+    uploader._store.async_load.return_value = None
+    client.status.side_effect = PowermeshConnectionError("offline")
+    hass.states.async_set("sensor.grid_import", "12", ENERGY)
+    await uploader.async_start()
+    await hass.async_block_till_done()
+    assert uploader.pending == 0 and uploader.buffer_limit is None
+    assert uploader.status == "limits_unknown" and uploader.dropped_total > 0
+    assert "Discarded new reading" in caplog.text
+    client.upload.assert_not_awaited()
+    await uploader.async_stop()
+
+
+@pytest.mark.parametrize("large_metadata,count", [(False, 451), (True, 80)])
+async def test_backlog_split_obeys_reading_and_encoded_body_limits(hass, large_metadata, count):
+    uploader, client, _ = make_uploader(hass)
+    for index in range(count):
+        item = reading(index) | {"entity_id": f"sensor.item_{index}"}
+        if large_metadata:
+            item["context"] = {"labels": [f"{i}:" + "x" * 250 for i in range(20)]}
+        uploader._append(item)
+    batches = []
+
+    async def upload(batch):
+        assert 1 <= len(batch) <= 200
+        assert len(encode_request({"readings": batch})) <= 131072
+        batches.append(deepcopy(batch))
+        return UploadResult(len(batch), 0)
+
+    client.upload.side_effect = upload
+    await uploader.async_upload()
+    assert uploader.pending == 0 and uploader.accepted_total == count
+    assert sum(map(len, batches)) == count
+    assert len(batches) > 1
+    if not large_metadata:
+        assert list(map(len, batches)) == [200, 200, 51]
+
+
+async def test_backlog_stops_when_server_request_budget_is_exhausted(hass):
+    uploader, client, _ = make_uploader(hass)
+    for index in range(201):
+        uploader._append(reading(index) | {"entity_id": f"sensor.item_{index}"})
+    client.upload.return_value = UploadResult(200, 0, remaining_requests=0)
+    await uploader.async_upload()
+    assert client.upload.await_count == 1
+    assert uploader.pending == 1 and uploader.accepted_total == 200

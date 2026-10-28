@@ -15,7 +15,9 @@ from custom_components.powermesh_energy.api import (
     PowermeshRejectedError,
     UploadResult,
     encode_request,
+    parse_buffer_limit,
     validate_connection,
+    validate_status,
 )
 from custom_components.powermesh_energy.const import API_RELEASE, CLIENT_ID, MAX_BODY_BYTES
 
@@ -69,6 +71,7 @@ def status_body():
         "scopes": ["readings:write"],
         "limits": {
             "requests_per_minute": 60,
+            "buffer_limit_readings": 5000,
             "max_readings_per_request": 200,
             "max_body_bytes": MAX_BODY_BYTES,
         },
@@ -89,6 +92,24 @@ def test_api_key_format_is_strict():
     validate_connection(API_KEY + " ")
 
 
+@pytest.mark.parametrize("value", [None, True, False, 0, -1, 1_000_001, "5000", 5.5])
+def test_buffer_limit_rejects_missing_or_invalid_values(value):
+    with pytest.raises(PowermeshOutdatedError, match="invalid_buffer_limit"):
+        parse_buffer_limit({"buffer_limit_readings": value})
+    body = status_body()
+    body["limits"]["buffer_limit_readings"] = value
+    with pytest.raises(PowermeshOutdatedError):
+        validate_status(body)
+
+
+async def test_limits_uses_authenticated_fixed_service():
+    body = {"status": "ok", "api_version": 2, "api_release": API_RELEASE, "limits": status_body()["limits"]}
+    client, session = api_client(FakeResponse(body=body))
+    assert await client.limits() == body
+    assert session.calls[0][0] == ("GET", "https://api.powermesh.de/api/v2/limits")
+    assert session.calls[0][1]["headers"]["Authorization"].endswith(API_KEY)
+
+
 async def test_status_uses_fixed_tls_service_and_client_header():
     client, session = api_client(FakeResponse(body=status_body()))
     result = await client.status()
@@ -97,7 +118,7 @@ async def test_status_uses_fixed_tls_service_and_client_header():
     assert args == ("GET", "https://api.powermesh.de/api/v2/status")
     assert kwargs["allow_redirects"] is False
     assert kwargs["headers"]["Authorization"] == f"Bearer {API_KEY}"
-    assert kwargs["headers"]["X-Powermesh-Client"] == CLIENT_ID == "homeassistant/0.5.0"
+    assert kwargs["headers"]["X-Powermesh-Client"] == CLIENT_ID == "homeassistant/0.6.0"
 
 
 async def test_status_rejects_mismatched_api_version_header():

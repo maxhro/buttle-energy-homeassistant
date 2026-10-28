@@ -130,6 +130,8 @@
         "name": "Übertragungsstatus",
         "state": {
           "pending": "Ausstehend",
+          "buffer_full": "Pufferlimit erreicht",
+          "limits_unknown": "Pufferlimit unbekannt",
           "ok": "OK",
           "offline": "Offline",
           "rate_limited": "Drosselung aktiv",
@@ -149,6 +151,10 @@
     }
   },
   "issues": {
+    "buffer_limit": {
+      "title": "Powermesh Energie: Messwertpuffer fehlerhaft",
+      "description": "Das benutzerspezifische Pufferlimit ist erreicht oder konnte noch nicht abgerufen werden. Neue Messwerte werden verworfen, gezählt und im Fehlerprotokoll gemeldet; vorhandene Messwerte bleiben erhalten. Prüfe die Verbindung zu powermesh.de und das Limit in deinem Konto. Nach einer erfolgreichen Übertragung mit freiem Pufferplatz verschwindet der Fehler automatisch."
+    },
     "buffer_incompatible": {
       "title": "Powermesh Energie: Ausstehende Messwerte prüfen",
       "description": "Ein lokal gespeicherter Stapel verwendet ein älteres, inkompatibles Format und wurde weder gesendet noch verändert. Sichere benötigte lokale Daten, bevor du den Eintrag entfernst und neu erstellst; dabei wird der lokale Puffer gelöscht."

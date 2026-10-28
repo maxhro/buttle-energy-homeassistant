@@ -68,6 +68,7 @@ class PowermeshStatusSensor(_PowermeshSensor):
             "last_error": self._uploader.last_error,
             "accepted_total": self._uploader.accepted_total,
             "dropped_total": self._uploader.dropped_total,
+            "buffer_limit_readings": self._uploader.buffer_limit,
             "entities": self._uploader.entities,
             "integration_version": VERSION,
             "latest_integration_version": self._uploader.latest_version,

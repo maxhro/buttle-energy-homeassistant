@@ -7,10 +7,10 @@ from typing import Final
 
 DOMAIN: Final = "powermesh_energy"
 # Keep in sync with manifest.json.
-VERSION: Final = "0.5.0"
-API_RELEASE: Final = "0.2.0"
+VERSION: Final = "0.6.0"
+API_RELEASE: Final = "0.3.0"
 API_MAJOR: Final = 2
-# Account setup status is part of every status/upload response since 0.2.0.
+# Per-user buffer limits require service release 0.3.0.
 MIN_API_RELEASE: Final = API_RELEASE
 CLIENT_ID: Final = f"homeassistant/{VERSION}"
 DEFAULT_URL: Final = "https://api.powermesh.de"
@@ -64,8 +64,6 @@ INTERVAL_MAP: Final[dict[str, timedelta]] = {
     "7days": timedelta(days=7),
 }
 MAX_READINGS_PER_REQUEST: Final = 200
-# Upper bound for the offline buffer; the oldest readings are dropped beyond it.
-MAX_BUFFERED_READINGS: Final = 20_000
 STORAGE_VERSION: Final = 1
 REQUEST_TIMEOUT_SECONDS: Final = 30
 REST_BUFFER_FORMAT: Final = "rest-v2"
@@ -79,6 +77,8 @@ STATUS_CONSENT_REQUIRED: Final = "consent_required"
 STATUS_REJECTED: Final = "rejected"
 STATUS_UPDATE_REQUIRED: Final = "update_required"
 STATUS_API_INCOMPATIBLE: Final = "api_incompatible"
+STATUS_BUFFER_FULL: Final = "buffer_full"
+STATUS_LIMITS_UNKNOWN: Final = "limits_unknown"
 STATUSES: Final = [
     STATUS_PENDING,
     STATUS_OK,
@@ -89,4 +89,6 @@ STATUSES: Final = [
     STATUS_REJECTED,
     STATUS_UPDATE_REQUIRED,
     STATUS_API_INCOMPATIBLE,
+    STATUS_BUFFER_FULL,
+    STATUS_LIMITS_UNKNOWN,
 ]

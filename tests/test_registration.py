@@ -89,8 +89,8 @@ async def register(session):
 
 
 def test_registration_targets_new_api_release():
-    assert API_RELEASE == MIN_API_RELEASE == "0.2.0"
-    assert CLIENT_ID == "homeassistant/0.5.0"
+    assert API_RELEASE == MIN_API_RELEASE == "0.3.0"
+    assert CLIENT_ID == "homeassistant/0.6.0"
 
 
 async def test_register_sends_exact_fields_once_to_fixed_service_without_auth():
